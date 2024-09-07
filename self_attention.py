@@ -121,3 +121,46 @@ The similarity between the query and the key determines the attention score.
 3. **Value**: represents the actual information that is being retrieved.
 The attention scores are used to weight these values to produce the final output.
 '''
+
+# 3.5 Causal Attention
+# First version
+# First step: compute the attention scores
+queries = torch.matmul(inputs, W_query) # project all input tokens into the query space
+keys = torch.matmul(inputs, W_key) # project all input tokens into the key space
+attn_scores = torch.matmul(queries, keys.T) # compute the dot product of the queries with every key
+
+# Second step: apply softmax to get the normalized attention scores
+attn_weights = torch.softmax(attn_scores / d_k**0.5, dim=1) # apply softmax to get the normalized attention scores
+print(f'Attention Weights: {attn_weights}')
+
+# Third step: mask the upper triangular part of the attention scores
+context_length = len(inputs)
+mask = torch.tril(torch.ones(context_length, context_length)) # mask the upper triangular part of the attention scores
+attn_weights = attn_weights * mask
+
+# Fourth step: apply softmax to get the normalized attention scores
+row_sums = attn_weights.sum(dim=1, keepdim=True) # compute the row sums
+attn_weights = attn_weights / row_sums # normalize the attention scores
+print(f'Normalized Causal Attention Weights: {attn_weights}')
+
+# Fifth step: compute the context vector
+context_vector = torch.matmul(attn_weights, values) # compute the context vector
+print(f'Causal Attention Context Vectors: {context_vector}')
+
+# Second Version 
+print()
+print("Second Version of Causal Attention") 
+# First step: compute the attention scores
+attn_scores = torch.matmul(queries, keys.T) # compute the dot product of the queries with every key
+
+# Second step: mask the upper triangular with a negative infinity value, so that the softmax operation will assign a probability of zero to these values
+mask = torch.triu(torch.full((context_length, context_length), float('-inf')), diagonal=1) # mask the upper triangular part of the attention scores
+attn_scores = attn_scores.masked_fill(mask.bool(), float('-inf')) # apply the mask to the attention scores
+
+# Third step: apply softmax to get the normalized attention scores
+attn_weights = torch.softmax(attn_scores / d_k**0.5, dim=1) # apply softmax to get the normalized attention scores
+print(f'Causal Attention Weights: {attn_weights}')
+
+# Fourth step: compute the context vector
+context_vector = torch.matmul(attn_weights, values) # compute the context vector
+print(f'Causal Attention Context Vectors: {context_vector}')
