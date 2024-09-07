@@ -81,6 +81,71 @@ class CausalAttention(nn.Module):
 
         return context_vectors
 
+# Sequential Multi-Head Attention
+class MultiHeadAttentionWrapper(nn.Module):
+    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
+        super().__init__()
+        self.heads = nn.ModuleList([
+            CausalAttention(d_in, d_out, dropout, context_length, qkv_bias) for _ in range(num_heads)
+        ])
+    
+    def forward(self, x):
+        return torch.cat([head(x) for head in self.heads], dim=-1)
+
+# Parallel Multi-Head Attention - Split the input into multiple heads and process them in parallel
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
+        super().__init__()
+        assert d_out % num_heads == 0, "Number of heads must divide output dimension"
+        self.d_out = d_out
+        self.num_heads = num_heads
+        self.head_dim = d_out // num_heads
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.out_proj = nn.Linear(d_out, d_out) # Linear layer to project the concatenated heads
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer('mask', torch.triu(torch.ones(context_length, context_length), diagonal=1))
+    
+    def forward(self, x):
+        b, num_tokens, d_in = x.shape
+
+        keys = self.W_key(x) # Shape: (b, num_tokens, d_out)
+        queries = self.W_query(x)
+        values = self.W_value(x)
+
+        # We implicitly split the matrix by adding a `num_heads` dimension
+        # Unroll last dim: (b, num_tokens, d_out) -> (b, num_tokens, num_heads, head_dim)
+        keys = keys.view(b, num_tokens, self.num_heads, self.head_dim) 
+        values = values.view(b, num_tokens, self.num_heads, self.head_dim)
+        queries = queries.view(b, num_tokens, self.num_heads, self.head_dim)
+
+        # Transpose: (b, num_tokens, num_heads, head_dim) -> (b, num_heads, num_tokens, head_dim)
+        keys = keys.transpose(1, 2)
+        queries = queries.transpose(1, 2)
+        values = values.transpose(1, 2)
+
+        # Compute scaled dot-product attention (aka self-attention) with a causal mask
+        # (b, num_heads, num_tokens, head_dim) x (b, num_heads, head_dim, num_tokens) -> (b, num_heads, num_tokens, num_tokens)
+        attn_scores = torch.matmul(queries, keys.transpose(2, 3))  # Dot product for each head
+
+        # Original mask truncated to the number of tokens and converted to boolean
+        mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
+
+        # Use the mask to fill attention scores
+        attn_scores.masked_fill_(mask_bool, -torch.inf)
+        
+        attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+
+        # Shape: (b, num_tokens, num_heads, head_dim)
+        context_vec = (attn_weights @ values).transpose(1, 2) 
+        
+        # Combine heads, where self.d_out = self.num_heads * self.head_dim
+        context_vec = context_vec.contiguous().view(b, num_tokens, self.d_out)
+        context_vec = self.out_proj(context_vec) # optional projection, standard convention in LLM implementation, but it's not strictly necessary (recent research has shown that it can be removed without affecting the modeling performance)
+
+        return context_vec
 
 # Test
 torch.manual_seed(123)
@@ -100,6 +165,14 @@ print(sa(inputs))
 sa2 = SelfAttentionV2(3, 2)
 print(sa2(inputs))
 
-stack = torch.stack([inputs, inputs])
-sa3 = CausalAttention(3, 2, 0.1, stack.shape[1])
+batch = torch.stack([inputs, inputs])
+sa3 = CausalAttention(3, 2, 0.1, batch.shape[1])
 print(sa3(inputs))
+
+torch.manual_seed(123)
+
+batch_size, context_length, d_in = batch.shape
+d_out = 2
+mha = MultiHeadAttention(d_in, d_out, context_length, 0.0, num_heads=2)
+context_vecs = mha(batch)
+print(context_vecs)
