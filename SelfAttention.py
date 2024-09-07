@@ -38,6 +38,50 @@ class SelfAttentionV2(nn.Module):
         context_vectors = torch.matmul(attention_weights, values)
         return context_vectors
 
+class CausalAttention(nn.Module):
+    def __init__(self, d_in, d_out, dropout, context_length, qkv_bias=False):
+        super().__init__()
+        self.d_out = d_out
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.dropout = nn.Dropout(dropout)
+        
+        # buffers are automatically moved to the appropriate device along with our model
+        self.register_buffer('mask', torch.triu(torch.ones(context_length, context_length), diagonal=1)) 
+
+    def forward(self, x):
+        # b: batch dimension
+        # num_tokens: number of tokens in the sequence
+        # d_in: input dimension
+        # handle batch size = 1
+        if len(x.shape) == 2:
+            x = x.unsqueeze(0)
+        b, num_tokens, d_in = x.shape  
+
+        queries = self.W_query(x)  # Project x to query space
+        keys = self.W_key(x)       # Project x to key space
+        values = self.W_value(x)   # Project x to value space
+
+        # Attention Scores
+        attention_scores = torch.matmul(queries, keys.transpose(1, 2))  # keys.T(1, 2): trasposta di keys rispetto alle dimensioni 1 e 2
+
+        # Causal Attention
+        # self.mask.bool()[:num_tokens, :num_tokens] output --> tensor([[False,  True,  True,  True,  True,  True], ...]) of size (num_tokens, num_tokens)
+        attention_scores = attention_scores.masked_fill_(self.mask.bool()[:num_tokens, :num_tokens], float('-inf'))
+
+        # Softmax to obtain attention weights
+        attention_weights = torch.softmax(attention_scores / self.d_out**0.5, dim=1)
+
+        # Dropout
+        attention_weights = self.dropout(attention_weights)
+
+        # Context vectors
+        context_vectors = torch.matmul(attention_weights, values)
+
+        return context_vectors
+
+
 # Test
 torch.manual_seed(123)
 inputs = torch.tensor(
@@ -55,3 +99,7 @@ print(sa(inputs))
 
 sa2 = SelfAttentionV2(3, 2)
 print(sa2(inputs))
+
+stack = torch.stack([inputs, inputs])
+sa3 = CausalAttention(3, 2, 0.1, stack.shape[1])
+print(sa3(inputs))
