@@ -167,3 +167,22 @@ print(f'Parameters in a single FF: {ff_params:,}')
 total_size_bytes = total_params * 4 # Assuming each parameter is a 32-bit float
 total_size_mb = total_size_bytes / (1024 * 1024)
 print(f'Total memory requirements: {total_size_mb:.2f} MB')
+
+# Let's move on to how to generate text with SmolGPT
+# For now we will generate text based on the most probable token at each step
+# Further improvements can be made by sampling from the distribution of the logits (temperature, top-k, top-p sampling, ...)
+def generate_text(model, tokenizer, prompt, max_len=100):
+    model.eval()
+    prompt = torch.tensor(tokenizer.encode(prompt)).unsqueeze(0)
+    with torch.no_grad():
+        for _ in range(max_len):
+            logits = model(prompt)
+            logits = logits[:, -1, :] 
+            probs = torch.softmax(logits, dim=-1)
+            next_token = torch.argmax(probs, dim=-1)
+            prompt = torch.cat([prompt, next_token.unsqueeze(0)], dim=-1)
+    return prompt
+
+prompt = "Hello, I am a model"
+generated = generate_text(SmolGPT, tokenizer, prompt, max_len=4)
+print(f'Generated text: {tokenizer.decode(generated[0].tolist())}')
