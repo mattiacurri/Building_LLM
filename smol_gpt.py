@@ -19,7 +19,7 @@ class SmolGPTModel(nn.Module):
         self.token_embedding = nn.Embedding(cfg["vocab_size"], cfg["embed_dim"])
         self.position_embedding = nn.Embedding(cfg["context_length"], cfg["embed_dim"])
         self.dropout = nn.Dropout(cfg["drop_rate"])
-        self.transformers_layers = nn.Sequential(*[DummyTransformerLayer(cfg) for _ in range(cfg["n_layers"])])
+        self.transformers_layers = nn.Sequential(*[TransformerBlock(cfg) for _ in range(cfg["n_layers"])])
         self.ln = LayerNorm(cfg["embed_dim"])
         self.out_head = nn.Linear(cfg["embed_dim"], cfg["vocab_size"], bias=False)
 
@@ -32,12 +32,6 @@ class SmolGPTModel(nn.Module):
         logits = self.out_head(x)
         return logits
 
-class DummyTransformerLayer(nn.Module):
-    def __init__(self, cfg):
-        super().__init__()
-    
-    def forward(self, x):
-        return x
 
 class LayerNorm(nn.Module):
     def __init__(self, embed_dim):
