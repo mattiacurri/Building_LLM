@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from SelfAttention import MultiHeadAttention
 
 # Configuration of SmolGPT
 SMOLGPT_CONFIG_124M = {
@@ -68,7 +69,7 @@ class GELU(nn.Module):
     def forward(self, x):
         # GELU(x) = x * phi(x), where phi(x) is the standard Gaussian cumulative distribution function
         # For a faster approximation, we can use the following formula
-        return 0.5 * x * (1 + torch.tanh((torch.sqrt(2 / torch.pi) * (x + 0.044715 * torch.pow(x, 3)))))
+        return 0.5 * x * (1 + torch.tanh((torch.sqrt(torch.tensor(2.0 / torch.pi)) * (x + 0.044715 * torch.pow(x, 3)))))
 
 class FeedForward(nn.Module):
     def __init__(self, cfg):
@@ -83,6 +84,38 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
+class TransformerBlock(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        
+        self.attention = MultiHeadAttention(
+            d_in=cfg["embed_dim"], 
+            d_out=cfg["embed_dim"], 
+            context_length=cfg["context_length"], 
+            num_heads=cfg["n_heads"], 
+            dropout=cfg["drop_rate"], 
+            qkv_bias=cfg["qkv_bias"])
+        self.feed_forward = FeedForward(cfg)
+        self.layer_norm_1 = LayerNorm(cfg["embed_dim"])
+        self.layer_norm_2 = LayerNorm(cfg["embed_dim"])
+        self.dropout = nn.Dropout(cfg["drop_rate"])
+
+    def forward(self, x):
+        # Block 1
+        shortcut = x
+        x = self.layer_norm_1(x)
+        x = self.attention(x)
+        x = self.dropout(x)
+        x += shortcut # Residual connection
+
+        # Block 2
+        shortcut = x
+        x = self.layer_norm_2(x)
+        x = self.feed_forward(x)
+        x = self.dropout(x)
+        x += shortcut # Residual connection
+        return x
+
 # Test of LayerNorm
 torch.manual_seed(123)
 batch_example = torch.randn(2, 5)
@@ -92,3 +125,11 @@ mean = out_ln.mean(-1, keepdim=True)
 var = out_ln.var(-1, keepdim=True, unbiased=False)
 print(f'Mean: {mean}')
 print(f'Variance: {var}')
+
+# Test of TransformerBlock
+torch.manual_seed(123)
+x = torch.randn(2, 4, 768)
+block = TransformerBlock(SMOLGPT_CONFIG_124M)
+out_block = block(x)
+print(f'Input shape: {x.shape}')
+print(f'Output shape: {out_block.shape}')
