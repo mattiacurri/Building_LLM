@@ -202,7 +202,7 @@ def generate_and_print_sample(model, tokenizer, device, start_context):
     decoded_text = token_ids_to_text(token_ids, tokenizer)
     print(decoded_text.replace("\n", " "))  # Compact print format
     model.train()
-
+    
 def training_loop_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
                        eval_freq, eval_iter, start_context):
     train_losses, val_losses, track_token_seen = [], [], []
@@ -246,6 +246,10 @@ train_losses, val_losses, tokens_seen = training_loop_simple(
     num_epochs=num_epochs, eval_freq=5, eval_iter=5,
     start_context="Every effort moves you",
 )
+
+torch.save({"model_state_dict": GPT.state_dict(), 
+            "optimizer_state_dict": optimizer.state_dict()}, 
+           "SmolGPT.pth")
 
 end_time = time.time()
 execution_time_minutes = (end_time - start_time) / 60
@@ -316,3 +320,74 @@ token_ids = generate(model=GPT,
                      context_size=SMOLGPT_CONFIG_124M_MCL["context_length"],
                      temperature=1.4, top_k=25)
 print(f'Output text: {token_ids_to_text(token_ids, tokenizer)}')
+
+# Now a better training loop
+import math
+def better_training_loop(model, train_loader, val_loader, optimizer, device, eval_freq, eval_iter, start_context, num_epochs, warmup_steps=20, initial_lr=3e-5, min_lr=1e-6):
+    train_losses, val_losses, track_token_seen, track_lrs = [], [], [], []
+    tokens_seen, global_step = 0, -1
+    peak_lr = optimizer.param_groups[0]["lr"] # get the initial learning rate
+    lr_increment = (peak_lr - initial_lr) / warmup_steps
+    total_training_steps = len(train_loader) * num_epochs
+    
+    for epoch in range(num_epochs):
+        model.train()
+        for input_batch, target_batch in train_loader:
+            optimizer.zero_grad()
+            global_step += 1
+            
+            # Adjust the learning rate based on the current phase (warmup or cosine annealing)
+            if global_step < warmup_steps:
+                # Linear warmup
+                lr = initial_lr + global_step * lr_increment  
+            else:
+                # Cosine annealing after warmup
+                progress = ((global_step - warmup_steps) / 
+                            (total_training_steps - warmup_steps))
+                lr = min_lr + (peak_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * progress))
+            
+            # Update the learning rate
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = lr
+            
+            track_lrs.append(lr)
+            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            loss.backward()
+            
+            # Gradient clipping: prevent the exploding gradient problem by scaling the gradients if they exceed a certain threshold
+            if global_step > warmup_steps:
+                # clip the gradients to a maximum norm of 1.0, where the norm is the sum of the squares of the gradients (L2 norm)
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            tokens_seen += input_batch.numel()
+            
+            # Optional evaluation of the model
+            if global_step % eval_freq == 0:
+                train_loss, val_loss = evaluate_model(model, train_loader, val_loader, device, eval_freq)
+                train_losses.append(train_loss)
+                val_losses.append(val_loss)
+                track_token_seen.append(tokens_seen)
+                print(f'Epoch: {epoch}, Global Step: {global_step}, Train Loss: {train_loss:.3f}, Val Loss: {val_loss:.3f}')
+        generate_and_print_sample(model, train_loader.dataset.tokenizer, device, start_context)
+        
+    return train_losses, val_losses, track_token_seen, track_lrs
+
+start_time = time.time()
+
+torch.manual_seed(123)
+model = SmolGPTModel(SMOLGPT_CONFIG_124M_MCL)
+model.to(device)
+
+peak_lr = 5e-4
+optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.1)
+
+n_epochs = 15
+train_losses, val_losses, tokens_seen, lrs = better_training_loop(
+    model, train_loader, val_loader, optimizer, device, num_epochs=n_epochs,
+    eval_freq=5, eval_iter=1, start_context="Every effort moves you",
+    warmup_steps=20, initial_lr=1e-5, min_lr=1e-5
+)
+
+end_time = time.time()
+execution_time_minutes = (end_time - start_time) / 60
+print(f"Training completed in {execution_time_minutes:.2f} minutes.")
