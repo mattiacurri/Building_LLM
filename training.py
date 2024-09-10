@@ -244,9 +244,75 @@ num_epochs = 10
 train_losses, val_losses, tokens_seen = training_loop_simple(
     GPT, train_loader, val_loader, optimizer, device,
     num_epochs=num_epochs, eval_freq=5, eval_iter=5,
-    start_context="Hello, I am", tokenizer=tokenizer
+    start_context="Every effort moves you",
 )
 
 end_time = time.time()
 execution_time_minutes = (end_time - start_time) / 60
 print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+
+# Let's plot the training and validation loss
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
+
+def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
+    fig, ax1 = plt.subplots(figsize=(5, 3))
+
+    # Plot training and validation loss against epochs
+    ax1.plot(epochs_seen, train_losses, label="Training loss")
+    ax1.plot(epochs_seen, val_losses, linestyle="-.", label="Validation loss")
+    ax1.set_xlabel("Epochs")
+    ax1.set_ylabel("Loss")
+    ax1.legend(loc="upper right")
+    ax1.xaxis.set_major_locator(MaxNLocator(integer=True))  # only show integer labels on x-axis
+
+    # Create a second x-axis for tokens seen
+    ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
+    ax2.plot(tokens_seen, train_losses, alpha=0)  # Invisible plot for aligning ticks
+    ax2.set_xlabel("Tokens seen")
+
+    fig.tight_layout()  # Adjust layout to make room
+    plt.savefig("loss-plot.pdf")
+    plt.show()
+
+epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
+
+# Now let's use some decoding strategies to generate text (temperature scaling and top-k sampling)
+def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=None):
+    for _ in range(max_new_tokens):
+        idx_cond = idx[:, -context_size:]
+        with torch.no_grad():
+            logits = model(idx_cond)
+        logits = logits[:, -1, :]
+        # top-k sampling: maintain only the top k highest probabilities
+        if top_k is not None:
+            top_logits, _ = torch.topk(logits, top_k, dim=-1)
+            min_val = top_logits[:, -1]
+            # mask with -inf to exclude the values below the top-k
+            logits = torch.where(logits < min_val, torch.tensor(-float('inf')).to(logits.device), logits)
+        # temperature scaling: increase the temperature to make the distribution more uniform or decrease it to make it more peaky (more confident)
+        if temperature > 0.0:
+            logits /= temperature
+            probs = torch.softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+        else:
+            next_token = torch.argmax(logits, dim=-1)
+        
+        if next_token == eos_id:  # Stop generating early if end-of-sequence token is encountered and eos_id is specified
+            break
+        idx = torch.cat((idx, next_token), dim=1)
+    return idx
+
+# test the function
+torch.manual_seed(123)
+GPT.eval()
+GPT.to("cpu")
+
+token_ids = generate(model=GPT, 
+                     idx=text_to_token_ids("Every effort moves you", tokenizer), 
+                     max_new_tokens=15, 
+                     context_size=SMOLGPT_CONFIG_124M_MCL["context_length"],
+                     temperature=1.4, top_k=25)
+print(f'Output text: {token_ids_to_text(token_ids, tokenizer)}')
