@@ -107,18 +107,27 @@ train_data = raw_text[:split_idx]
 val_data = raw_text[split_idx:]
 
 torch.manual_seed(123)
-train_loader = create_dataloader(train_data, tokenizer=tokenizer,
-                                 max_length=SMOLGPT_CONFIG_124M_MCL["context_length"], 
-                                 stride=SMOLGPT_CONFIG_124M_MCL["context_length"],
-                                 batch_size=2, 
-                                 drop_last=True, 
-                                 shuffle=True)
-val_loader = create_dataloader(val_data, tokenizer=tokenizer,
-                                 max_length=SMOLGPT_CONFIG_124M_MCL["context_length"], 
-                                 stride=SMOLGPT_CONFIG_124M_MCL["context_length"],
-                                 batch_size=2, 
-                                 drop_last=True, 
-                                 shuffle=True)
+train_loader = create_dataloader(
+    train_data,
+    tokenizer,
+    batch_size=2,
+    max_length=SMOLGPT_CONFIG_124M_MCL["context_length"],
+    stride=SMOLGPT_CONFIG_124M_MCL["context_length"],
+    drop_last=True,
+    shuffle=True,
+    num_workers=0
+)
+
+val_loader = create_dataloader(
+    val_data,
+    tokenizer,
+    batch_size=2,
+    max_length=SMOLGPT_CONFIG_124M_MCL["context_length"],
+    stride=SMOLGPT_CONFIG_124M_MCL["context_length"],
+    drop_last=False,
+    shuffle=False,
+    num_workers=0
+)
 
 print("Train loader check:")
 for x, y in train_loader:
@@ -127,6 +136,18 @@ for x, y in train_loader:
 print("Val loader check:")
 for x, y in val_loader:
     print(x.shape, y.shape) # [2, 256] --> 2 samples and 256 tokens each
+
+train_tokens = 0
+for input_batch, target_batch in train_loader:
+    train_tokens += input_batch.numel()
+
+val_tokens = 0
+for input_batch, target_batch in val_loader:
+    val_tokens += input_batch.numel()
+
+print("Training tokens:", train_tokens)
+print("Validation tokens:", val_tokens)
+print("All tokens:", train_tokens + val_tokens)
     
 # utility function to calculate che CE loss of a given batch
 def calc_loss_batch(input_batch, target_batch, model, device):
@@ -154,8 +175,9 @@ def calc_loss_loader(data_loader, model, device, num_batches=None):
 # Let's try it on training and validation data
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 GPT.to(device)
-train_loss = calc_loss_loader(train_loader, GPT, device, num_batches=10)
-val_loss = calc_loss_loader(val_loader, GPT, device, num_batches=10)
+with torch.no_grad(): # Disable gradient tracking for efficiency because we are not training, yet
+    train_loss = calc_loss_loader(train_loader, GPT, device)
+    val_loss = calc_loss_loader(val_loader, GPT, device)
 print(f'Train Loss: {train_loss}')
 print(f'Val Loss: {val_loss}')
 
@@ -182,7 +204,7 @@ def generate_and_print_sample(model, tokenizer, device, start_context):
     model.train()
 
 def training_loop_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
-                       eval_freq, eval_iter, start_context, tokenizer):
+                       eval_freq, eval_iter, start_context):
     train_losses, val_losses, track_token_seen = [], [], []
     tokens_seen, global_step = 0, -1
     
