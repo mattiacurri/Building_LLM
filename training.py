@@ -158,3 +158,73 @@ train_loss = calc_loss_loader(train_loader, GPT, device, num_batches=10)
 val_loss = calc_loss_loader(val_loader, GPT, device, num_batches=10)
 print(f'Train Loss: {train_loss}')
 print(f'Val Loss: {val_loss}')
+
+# Let's create a training loop
+def evaluate_model(model, train_loader, val_loader, device, num_batches):
+    model.eval()
+    with torch.no_grad():
+        train_loss = calc_loss_loader(train_loader, model, device, num_batches)
+        val_loss = calc_loss_loader(val_loader, model, device, num_batches)
+    model.train()
+    return train_loss, val_loss
+
+def generate_and_print_sample(model, tokenizer, device, start_context):
+    model.eval()
+    context_size = model.position_embedding.weight.shape[0]
+    encoded = text_to_token_ids(start_context, tokenizer).to(device)
+    with torch.no_grad():
+        token_ids = generate_text_simple(
+            model=model, idx=encoded,
+            max_new_tokens=50, context_size=context_size
+        )
+    decoded_text = token_ids_to_text(token_ids, tokenizer)
+    print(decoded_text.replace("\n", " "))  # Compact print format
+    model.train()
+
+def training_loop_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
+                       eval_freq, eval_iter, start_context, tokenizer):
+    train_losses, val_losses, track_token_seen = [], [], []
+    tokens_seen, global_step = 0, -1
+    
+    for epoch in range(num_epochs):
+        model.train()
+        
+        for input_batch, target_batch in train_loader:
+            optimizer.zero_grad()
+            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            loss.backward()
+            optimizer.step()
+            tokens_seen += input_batch.numel()
+            global_step += 1
+            
+            # Optional evaluation of the model
+            if global_step % eval_freq == 0:
+                # Numeric estimate of the training process
+                train_loss, val_loss = evaluate_model(model, train_loader, val_loader, device, eval_freq)
+                train_losses.append(train_loss)
+                val_losses.append(val_loss)
+                track_token_seen.append(tokens_seen)
+                print(f'Epoch: {epoch}, Global Step: {global_step}, Train Loss: {train_loss:.3f}, Val Loss: {val_loss:.3f}')
+                
+        # Provides a sense of how the model is doing
+        generate_and_print_sample(model, train_loader.dataset.tokenizer, device, start_context)
+    return train_losses, val_losses, track_token_seen
+
+import time
+start_time = time.time()
+
+torch.manual_seed(123)
+GPT = SmolGPTModel(SMOLGPT_CONFIG_124M_MCL)
+GPT.to(device)
+optimizer = torch.optim.AdamW(GPT.parameters(), lr=0.0004, weight_decay=0.1)
+
+num_epochs = 10
+train_losses, val_losses, tokens_seen = training_loop_simple(
+    GPT, train_loader, val_loader, optimizer, device,
+    num_epochs=num_epochs, eval_freq=5, eval_iter=5,
+    start_context="Hello, I am", tokenizer=tokenizer
+)
+
+end_time = time.time()
+execution_time_minutes = (end_time - start_time) / 60
+print(f"Training completed in {execution_time_minutes:.2f} minutes.")
