@@ -232,56 +232,56 @@ def training_loop_simple(model, train_loader, val_loader, optimizer, device, num
         generate_and_print_sample(model, train_loader.dataset.tokenizer, device, start_context)
     return train_losses, val_losses, track_token_seen
 
-import time
-start_time = time.time()
+# import time
+# start_time = time.time()
 
-torch.manual_seed(123)
-GPT = SmolGPTModel(SMOLGPT_CONFIG_124M_MCL)
-GPT.to(device)
-optimizer = torch.optim.AdamW(GPT.parameters(), lr=0.0004, weight_decay=0.1)
+# torch.manual_seed(123)
+# GPT = SmolGPTModel(SMOLGPT_CONFIG_124M_MCL)
+# GPT.to(device)
+# optimizer = torch.optim.AdamW(GPT.parameters(), lr=0.0004, weight_decay=0.1)
 
-num_epochs = 10
-train_losses, val_losses, tokens_seen = training_loop_simple(
-    GPT, train_loader, val_loader, optimizer, device,
-    num_epochs=num_epochs, eval_freq=5, eval_iter=5,
-    start_context="Every effort moves you",
-)
+# num_epochs = 10
+# train_losses, val_losses, tokens_seen = training_loop_simple(
+#     GPT, train_loader, val_loader, optimizer, device,
+#     num_epochs=num_epochs, eval_freq=5, eval_iter=5,
+#     start_context="Every effort moves you",
+# )
 
-torch.save({"model_state_dict": GPT.state_dict(), 
-            "optimizer_state_dict": optimizer.state_dict()}, 
-           "SmolGPT.pth")
+# torch.save({"model_state_dict": GPT.state_dict(), 
+#             "optimizer_state_dict": optimizer.state_dict()}, 
+#            "SmolGPT.pth")
 
-end_time = time.time()
-execution_time_minutes = (end_time - start_time) / 60
-print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+# end_time = time.time()
+# execution_time_minutes = (end_time - start_time) / 60
+# print(f"Training completed in {execution_time_minutes:.2f} minutes.")
 
-# Let's plot the training and validation loss
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
+# # Let's plot the training and validation loss
+# import matplotlib.pyplot as plt
+# from matplotlib.ticker import MaxNLocator
 
 
-def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
-    fig, ax1 = plt.subplots(figsize=(5, 3))
+# def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
+#     fig, ax1 = plt.subplots(figsize=(5, 3))
 
-    # Plot training and validation loss against epochs
-    ax1.plot(epochs_seen, train_losses, label="Training loss")
-    ax1.plot(epochs_seen, val_losses, linestyle="-.", label="Validation loss")
-    ax1.set_xlabel("Epochs")
-    ax1.set_ylabel("Loss")
-    ax1.legend(loc="upper right")
-    ax1.xaxis.set_major_locator(MaxNLocator(integer=True))  # only show integer labels on x-axis
+#     # Plot training and validation loss against epochs
+#     ax1.plot(epochs_seen, train_losses, label="Training loss")
+#     ax1.plot(epochs_seen, val_losses, linestyle="-.", label="Validation loss")
+#     ax1.set_xlabel("Epochs")
+#     ax1.set_ylabel("Loss")
+#     ax1.legend(loc="upper right")
+#     ax1.xaxis.set_major_locator(MaxNLocator(integer=True))  # only show integer labels on x-axis
 
-    # Create a second x-axis for tokens seen
-    ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
-    ax2.plot(tokens_seen, train_losses, alpha=0)  # Invisible plot for aligning ticks
-    ax2.set_xlabel("Tokens seen")
+#     # Create a second x-axis for tokens seen
+#     ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
+#     ax2.plot(tokens_seen, train_losses, alpha=0)  # Invisible plot for aligning ticks
+#     ax2.set_xlabel("Tokens seen")
 
-    fig.tight_layout()  # Adjust layout to make room
-    plt.savefig("loss-plot.pdf")
-    plt.show()
+#     fig.tight_layout()  # Adjust layout to make room
+#     plt.savefig("loss-plot.pdf")
+#     plt.show()
 
-epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
-plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
+# epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+# plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
 
 # Now let's use some decoding strategies to generate text (temperature scaling and top-k sampling)
 def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=None):
@@ -309,17 +309,17 @@ def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=No
         idx = torch.cat((idx, next_token), dim=1)
     return idx
 
-# test the function
-torch.manual_seed(123)
-GPT.eval()
-GPT.to("cpu")
+# # test the function
+# torch.manual_seed(123)
+# GPT.eval()
+# GPT.to("cpu")
 
-token_ids = generate(model=GPT, 
-                     idx=text_to_token_ids("Every effort moves you", tokenizer), 
-                     max_new_tokens=15, 
-                     context_size=SMOLGPT_CONFIG_124M_MCL["context_length"],
-                     temperature=1.4, top_k=25)
-print(f'Output text: {token_ids_to_text(token_ids, tokenizer)}')
+# token_ids = generate(model=GPT, 
+#                      idx=text_to_token_ids("Every effort moves you", tokenizer), 
+#                      max_new_tokens=15, 
+#                      context_size=SMOLGPT_CONFIG_124M_MCL["context_length"],
+#                      temperature=1.4, top_k=25)
+# print(f'Output text: {token_ids_to_text(token_ids, tokenizer)}')
 
 # Now a better training loop
 import math
@@ -372,22 +372,22 @@ def better_training_loop(model, train_loader, val_loader, optimizer, device, eva
         
     return train_losses, val_losses, track_token_seen, track_lrs
 
-start_time = time.time()
+# start_time = time.time()
 
-torch.manual_seed(123)
-model = SmolGPTModel(SMOLGPT_CONFIG_124M_MCL)
-model.to(device)
+# torch.manual_seed(123)
+# model = SmolGPTModel(SMOLGPT_CONFIG_124M_MCL)
+# model.to(device)
 
-peak_lr = 5e-4
-optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.1)
+# peak_lr = 5e-4
+# optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.1)
 
-n_epochs = 15
-train_losses, val_losses, tokens_seen, lrs = better_training_loop(
-    model, train_loader, val_loader, optimizer, device, num_epochs=n_epochs,
-    eval_freq=5, eval_iter=1, start_context="Every effort moves you",
-    warmup_steps=20, initial_lr=1e-5, min_lr=1e-5
-)
+# n_epochs = 15
+# train_losses, val_losses, tokens_seen, lrs = better_training_loop(
+#     model, train_loader, val_loader, optimizer, device, num_epochs=n_epochs,
+#     eval_freq=5, eval_iter=1, start_context="Every effort moves you",
+#     warmup_steps=20, initial_lr=1e-5, min_lr=1e-5
+# )
 
-end_time = time.time()
-execution_time_minutes = (end_time - start_time) / 60
-print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+# end_time = time.time()
+# execution_time_minutes = (end_time - start_time) / 60
+# print(f"Training completed in {execution_time_minutes:.2f} minutes.")
