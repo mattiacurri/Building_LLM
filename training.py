@@ -302,14 +302,14 @@ def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=No
             probs = torch.softmax(logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
         else:
-            next_token = torch.argmax(logits, dim=-1)
+            next_token = torch.argmax(logits, dim=-1, keepdim=True)
         
         if next_token == eos_id:  # Stop generating early if end-of-sequence token is encountered and eos_id is specified
             break
         idx = torch.cat((idx, next_token), dim=1)
     return idx
 
-# # test the function
+# test the function
 # torch.manual_seed(123)
 # GPT.eval()
 # GPT.to("cpu")
