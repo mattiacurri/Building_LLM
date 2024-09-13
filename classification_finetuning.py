@@ -31,6 +31,11 @@ from torch.utils.data import Dataset, DataLoader
 
 import tiktoken
 
+from smol_gpt import SmolGPTModel
+from gpt2 import gpt2_huggingface, BASE_CONFIG, load_weights, model_configs
+from training import generate, token_ids_to_text, text_to_token_ids
+
+# Stage 1: Dataset Preparation
 # 1) Download the dataset
 url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00228/smsspamcollection.zip"
 zip_path = "to_ignore/smsspamcollection.zip"
@@ -161,3 +166,119 @@ print("Batches Overview")
 print(f'{len(train_loader)} batches in train loader')
 print(f'{len(val_loader)} batches in validation loader')
 print(f'{len(test_loader)} batches in test loader')
+
+# Stage 2: Model Setup
+# 4) Initialize model
+CHOOSE_MODEL = "gpt2-small (124M)"
+BASE_CONFIG.update(model_configs[CHOOSE_MODEL])
+model = SmolGPTModel(BASE_CONFIG)
+
+# 5) Load pretrained weights
+load_weights(model, gpt2_huggingface)
+model.eval()
+
+# Test to ensure the weights are loaded correctly
+# text_1 = "Every effort moves you"
+# token_ids = generate(
+#     model=model,
+#     idx=text_to_token_ids(text_1, tokenizer),
+#     max_new_tokens=15,
+#     context_size=BASE_CONFIG["context_length"],
+# )
+# print(token_ids_to_text(token_ids, tokenizer))
+
+# 6) Modify model for fine-tuning
+# We substitute the last layer of the model with a linear layer with 2 output units for binary classification.
+# First of all let's freeze all the layers
+for params in model.parameters():
+    params.requires_grad = False
+
+torch.manual_seed(123)
+NUM_CLASSES = 2
+
+# Then we replace the last layer
+# By default requires_grad is set to True 'cause we're replacing the layer
+model.out_head = torch.nn.Linear(in_features=BASE_CONFIG["embed_dim"], 
+                                 out_features=NUM_CLASSES)
+
+# It's sufficient, but to yield better results, we can fine-tune the last layer, the last layer norm and the last transformer layer
+
+for params in model.ln.parameters():
+    params.requires_grad = True
+
+for params in model.transformers_layers[-1].parameters():
+    params.requires_grad = True
+
+# Let's verify the new model
+text = "May the force be with"
+enc = tokenizer.encode(text)
+enc = torch.tensor(enc).unsqueeze(0)
+with torch.no_grad():
+    out = model(enc)
+print(f'Output: {out}; Shape: {out.shape}') # previously instead of 5 we would have 50256 as second dimension
+
+# To fine-tune we are interested only on the last output token
+print(f"Last token output: {out[:, -1, :]}")
+
+# 7) Implement evaluation utilities
+def calc_accuracy_loader(dataloader, model, device, num_batches=None):
+    model.eval()
+    correct_predictions, num_examples = 0, 0
+    if num_batches is None:
+        num_batches = len(dataloader)
+    else:
+        num_batches = min(num_batches, len(dataloader))
+    for i, (input_batch, target_batch) in enumerate(dataloader):
+        if i < num_batches:
+            input_batch, target_batch = input_batch.to(device), target_batch.to(device)
+            with torch.no_grad():
+                logits = model(input_batch)[:, -1, :] # only the last output token
+            predictions = torch.argmax(logits, dim=-1)
+            num_examples += predictions.shape[0]
+            correct_predictions += ((predictions == target_batch).sum().item())
+        else:
+            break
+    return correct_predictions / num_examples
+
+torch.manual_seed(123)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+print(f'Training accuracy before fine-tuning: {calc_accuracy_loader(train_loader, model, device, num_batches=10)}%')
+print(f'Validation accuracy before fine-tuning: {calc_accuracy_loader(val_loader, model, device, num_batches=10)}%')
+print(f'Test accuracy before fine-tuning: {calc_accuracy_loader(test_loader, model, device, num_batches=10)}%')
+
+# Since accuracy is not differentiable, let's use the cross-entropy as a loss function
+def calc_loss_batch(input_batch, target_batch, model, device):
+    input_batch, target_batch = input_batch.to(device), target_batch.to(device)
+    logits = model(input_batch)[:, -1, :] # last output token
+    loss = torch.nn.functional.cross_entropy(logits, target_batch)
+    return loss
+
+def calc_loss_loader(dataloader, model, device, num_batches=None):
+    total_loss = 0
+    if len(dataloader) == 0:
+        return float("inf")
+    elif num_batches is None:
+        num_batches = len(dataloader)
+    else:
+        num_batches = min(num_batches, len(dataloader))
+    for i, (input_batch, target_batch) in enumerate(dataloader):
+        if i < num_batches:
+            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            total_loss += loss.item()
+        else:
+            break
+    return total_loss / num_batches
+
+# Let's compute the initial loss before fine-tuning
+with torch.no_grad():
+    criterion = torch.nn.CrossEntropyLoss()
+    train_loss = calc_loss_loader(train_loader, model, device, num_batches=10)
+    val_loss = calc_loss_loader(val_loader, model, device, num_batches=10)
+    test_loss = calc_loss_loader(test_loader, model, device, num_batches=10)
+
+print(f'Training loss before fine-tuning: {train_loss:.3f}')
+print(f'Validation loss before fine-tuning: {val_loss:.3f}')
+print(f'Test loss before fine-tuning: {test_loss:.3f}')
+
