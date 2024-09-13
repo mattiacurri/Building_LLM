@@ -273,7 +273,6 @@ def calc_loss_loader(dataloader, model, device, num_batches=None):
 
 # Let's compute the initial loss before fine-tuning
 with torch.no_grad():
-    criterion = torch.nn.CrossEntropyLoss()
     train_loss = calc_loss_loader(train_loader, model, device, num_batches=10)
     val_loss = calc_loss_loader(val_loader, model, device, num_batches=10)
     test_loss = calc_loss_loader(test_loader, model, device, num_batches=10)
@@ -282,3 +281,221 @@ print(f'Training loss before fine-tuning: {train_loss:.3f}')
 print(f'Validation loss before fine-tuning: {val_loss:.3f}')
 print(f'Test loss before fine-tuning: {test_loss:.3f}')
 
+# Stage 3: Model fine-tuning and usage
+# 8) Fine-tune model
+import math
+from torch import nn
+
+def evaluate_model(model, train_loader, val_loader, device, num_batches):
+    model.eval()
+    with torch.no_grad():
+        train_loss = calc_loss_loader(train_loader, model, device, num_batches)
+        val_loss = calc_loss_loader(val_loader, model, device, num_batches)
+    model.train()
+    return train_loss, val_loss
+
+# TODO: To be tested
+def better_training_loop(model, train_loader, val_loader, optimizer, device, eval_freq, eval_iter, num_epochs, warmup_steps=20, initial_lr=3e-5, min_lr=1e-6):
+    train_losses, val_losses, train_accs, val_accs, track_example_seen, track_lrs = [], [], [], [], [], []
+    examples_seen, global_step = 0, -1
+    peak_lr = optimizer.param_groups[0]["lr"] # get the initial learning rate
+    lr_increment = (peak_lr - initial_lr) / warmup_steps
+    total_training_steps = len(train_loader) * num_epochs
+    
+    for epoch in range(num_epochs):
+        model.train()
+        for input_batch, target_batch in train_loader:
+            optimizer.zero_grad()
+            global_step += 1
+            
+            # Adjust the learning rate based on the current phase (warmup or cosine annealing)
+            if global_step < warmup_steps:
+                # Linear warmup
+                lr = initial_lr + global_step * lr_increment  
+            else:
+                # Cosine annealing after warmup
+                progress = ((global_step - warmup_steps) / 
+                            (total_training_steps - warmup_steps))
+                lr = min_lr + (peak_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * progress))
+            
+            # Update the learning rate
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = lr
+            
+            track_lrs.append(lr)
+            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            loss.backward()
+            
+            # Gradient clipping: prevent the exploding gradient problem by scaling the gradients if they exceed a certain threshold
+            if global_step > warmup_steps:
+                # clip the gradients to a maximum norm of 1.0, where the norm is the sum of the squares of the gradients (L2 norm)
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            examples_seen += input_batch.shape[0]
+            
+            # Optional evaluation of the model
+            if global_step % eval_freq == 0:
+                train_loss, val_loss = evaluate_model(model, train_loader, val_loader, device, eval_iter)
+                train_losses.append(train_loss)
+                val_losses.append(val_loss)
+                track_example_seen.append(examples_seen)
+                print(f'Epoch {epoch} Step {global_step:03d}: '
+                      f'Train Loss: {train_loss:.3f}, '
+                      f'Val Loss: {val_loss:.3f}')
+        train_accuracy = calc_accuracy_loader(train_loader, model, device, num_batches=eval_iter)
+        train_accs.append(train_accuracy)
+        
+        val_accuracy = calc_accuracy_loader(val_loader, model, device, num_batches=eval_iter)
+        val_accs.append(val_accuracy)
+        
+        print(f'Training accuracy: {train_accuracy*100:.2f}% | Validation accuracy: {val_accuracy*100:.2f}%')
+        
+    return train_losses, val_losses, train_accs, val_accs, examples_seen
+
+# import time
+# start_time = time.time()
+# torch.manual_seed(123)
+# optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
+# NUM_EPOCHS = 5
+
+# train_losses, val_losses, train_accs, val_accs, examples_seen = better_training_loop(
+#     model, train_loader, val_loader, optimizer, device, eval_freq=50, eval_iter=5, num_epochs=NUM_EPOCHS
+# )
+
+# end_time = time.time()
+# execution_time_minutes = (end_time - start_time) / 60
+# print(f"Training complete in {execution_time_minutes:.2f} minutes")
+
+# Overall the same as `train_model_simple` in chapter 5
+def train_classifier_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
+                            eval_freq, eval_iter):
+    # Initialize lists to track losses and examples seen
+    train_losses, val_losses, train_accs, val_accs = [], [], [], []
+    examples_seen, global_step = 0, -1
+
+    # Main training loop
+    for epoch in range(num_epochs):
+        model.train()  # Set model to training mode
+
+        for input_batch, target_batch in train_loader:
+            optimizer.zero_grad() # Reset loss gradients from previous batch iteration
+            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            loss.backward() # Calculate loss gradients
+            optimizer.step() # Update model weights using loss gradients
+            examples_seen += input_batch.shape[0] # New: track examples instead of tokens
+            global_step += 1
+
+            # Optional evaluation step
+            if global_step % eval_freq == 0:
+                train_loss, val_loss = evaluate_model(
+                    model, train_loader, val_loader, device, eval_iter)
+                train_losses.append(train_loss)
+                val_losses.append(val_loss)
+                print(f"Ep {epoch+1} (Step {global_step:06d}): "
+                      f"Train loss {train_loss:.3f}, Val loss {val_loss:.3f}")
+
+        # Calculate accuracy after each epoch
+        train_accuracy = calc_accuracy_loader(train_loader, model, device, num_batches=eval_iter)
+        val_accuracy = calc_accuracy_loader(val_loader, model, device, num_batches=eval_iter)
+        print(f"Training accuracy: {train_accuracy*100:.2f}% | ", end="")
+        print(f"Validation accuracy: {val_accuracy*100:.2f}%")
+        train_accs.append(train_accuracy)
+        val_accs.append(val_accuracy)
+
+    return train_losses, val_losses, train_accs, val_accs, examples_seen
+
+import time
+
+start_time = time.time()
+
+torch.manual_seed(123)
+
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
+
+num_epochs = 5
+train_losses, val_losses, train_accs, val_accs, examples_seen = train_classifier_simple(
+    model, train_loader, val_loader, optimizer, device,
+    num_epochs=num_epochs, eval_freq=50, eval_iter=5,
+)
+
+end_time = time.time()
+execution_time_minutes = (end_time - start_time) / 60
+print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+
+import matplotlib.pyplot as plt
+
+def plot_values(epochs_seen, examples_seen, train_values, val_values, label="Loss"):
+    fig, ax1 = plt.subplots(figsize=(5, 3))
+
+    # Plot training and validation loss against epochs
+    ax1.plot(epochs_seen, train_values, label=f"Training {label}")
+    ax1.plot(epochs_seen, val_values, linestyle="-.", label=f"Validation {label}")
+    ax1.set_xlabel("Epochs")
+    ax1.set_ylabel(label.capitalize())
+    ax1.legend()
+
+    # Create a second x-axis for examples seen
+    ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
+    ax2.plot(examples_seen, train_values, alpha=0)  # Invisible plot for aligning ticks
+    ax2.set_xlabel("Examples seen")
+
+    fig.tight_layout()  # Adjust layout to make room
+    # plt.savefig(f"{label}-plot.pdf")
+    plt.show()
+
+epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+examples_seen_tensor = torch.linspace(0, examples_seen, len(train_losses))
+
+plot_values(epochs_tensor, examples_seen_tensor, train_losses, val_losses)
+
+# 9) Evaluate fine-tuned model
+print(f'Training accuracy after fine-tuning: {calc_accuracy_loader(train_loader, model, device)*100:.3f}%')
+print(f'Validation accuracy after fine-tuning: {calc_accuracy_loader(val_loader, model, device)*100:.3f}%')
+print(f'Test accuracy after fine-tuning: {calc_accuracy_loader(test_loader, model, device)*100:.3f}%')
+
+# 10) Use model on new data
+def classify_sms(text, model, tokenizer, device, max_length=None, pad_token_id=50256):
+    model.eval()
+    
+    encoded_text = tokenizer.encode(text)
+    supported_context_length = model.position_embedding.weight.shape[1]
+    
+    # Truncates if too long
+    encoded_text = encoded_text[:min(max_length, supported_context_length)]
+    
+    # Pad if too short
+    encoded_text += [pad_token_id] * (max_length - len(encoded_text))
+    
+    # Add batch dimension
+    encoded_text = torch.tensor(encoded_text).unsqueeze(0).to(device)
+    
+    # Get the model's prediction
+    with torch.no_grad():
+        logits = model(encoded_text)[:, -1, :]
+    prediction = torch.argmax(logits, dim=-1).item()
+    
+    return "spam" if prediction == 1 else "not spam"
+
+text_1 = (
+    "You are a winner you have been specially"
+    " selected to receive $1000 cash or a $2000 award."
+)
+
+print(classify_sms(
+    text_1, model, tokenizer, device, max_length=train_dataset.max_length
+))
+
+text_2 = (
+    "Hey, just wanted to check if we're still on"
+    " for dinner tonight? Let me know!"
+)
+
+print(classify_sms(
+    text_2, model, tokenizer, device, max_length=train_dataset.max_length
+))
+
+torch.save(model.state_dict(), "to_ignore/spam_classifier.pth")
+
+# To load:
+# model_state_dict = torch.load("review_classifier.pth", map_location=device, weights_only=True)
+# model.load_state_dict(model_state_dict)
