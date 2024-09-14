@@ -36,11 +36,11 @@ print(f'Example entry: {data[random.randint(0, len(data))]}')
 
 # To process the dataset, we will use the Alpaca style
 def format_input(entry): 
-    instruction_text = {
+    instruction_text = (
         f"Below is an instruction that describes a task."
         f"Write a response that appropriately completes the request."
         f"\n\n### Instruction:\n{entry['instruction']}"
-    }
+    )
     
     input_text = (f"\n\n### Input:\n{entry['input']}" if entry["input"] else "")
     return instruction_text + input_text
@@ -65,10 +65,10 @@ class InstructionDataset(Dataset):
         self.data = data
         self.tokenizer = tokenizer
         # Format the input
-        self.data = [format_input(entry) for entry in self.data]
-        response_text = [f"\n\n## Response:\n{entry["response"]}" for entry in self.data]
+        input_text = [format_input(entry) for entry in data]
+        response_text = [f"\n\n## Response:\n{entry["output"]}" for entry in data]
         # Tokenize the data
-        self.encoded_texts = [tokenizer.encode(text+response) for (text, response) in zip(self.data, response_text)]
+        self.encoded_texts = [tokenizer.encode(text+response) for (text, response) in zip(input_text, response_text)]
     
     def __getitem__(self, index):
         return self.encoded_texts[index]
@@ -123,3 +123,55 @@ batch = [
 
 inputs, targets = custom_collate_function(batch)
 print(inputs, targets)
+
+# Now we can create the dataloaders
+torch.manual_seed(123)
+import tiktoken
+tokenizer = tiktoken.get_encoding("gpt2")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+import os
+from functools import partial
+# We use a partial function to pass the device and the maximum length to the collate function, so we don't need to pass them every time we call the collate function
+customized_collate_function = partial(custom_collate_function, 
+                                      device=device, 
+                                      allowed_max_length=1024 # gpt2 max length
+                                      )
+NUM_WORKERS = os.cpu_count() if device == "cpu" else 0
+BATCH_SIZE = 8
+
+train_loader = DataLoader(
+    InstructionDataset(train_data, tokenizer),
+    batch_size=BATCH_SIZE,
+    shuffle=True,
+    num_workers=NUM_WORKERS,
+    drop_last=True,
+    collate_fn=customized_collate_function
+)
+
+val_loader = DataLoader(
+    InstructionDataset(val_data, tokenizer),
+    batch_size=BATCH_SIZE,
+    shuffle=False,
+    drop_last=False,
+    num_workers=NUM_WORKERS,
+    collate_fn=customized_collate_function
+)
+
+test_loader = DataLoader(
+    InstructionDataset(test_data, tokenizer),
+    batch_size=BATCH_SIZE,
+    shuffle=False,
+    drop_last=False,
+    num_workers=NUM_WORKERS,
+    collate_fn=customized_collate_function
+)
+
+
+print("Sanity check")
+for x, y in train_loader:
+    assert x.shape[0] == y.shape[0] and x.shape[1] == y.shape[1], f"Train loader: {x.shape} != {y.shape}"
+for x, y in val_loader:
+    assert x.shape[0] == y.shape[0] and x.shape[1] == y.shape[1], f"Val loader: {x.shape} != {y.shape}"
+for x, y in test_loader:
+    assert x.shape[0] == y.shape[0] and x.shape[1] == y.shape[1], f"Test loader: {x.shape} != {y.shape}"
