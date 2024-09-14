@@ -37,7 +37,7 @@ print(f'Example entry: {data[random.randint(0, len(data))]}')
 # To process the dataset, we will use the Alpaca style
 def format_input(entry): 
     instruction_text = (
-        f"Below is an instruction that describes a task."
+        f"Below is an instruction that describes a task. "
         f"Write a response that appropriately completes the request."
         f"\n\n### Instruction:\n{entry['instruction']}"
     )
@@ -135,7 +135,7 @@ from functools import partial
 # We use a partial function to pass the device and the maximum length to the collate function, so we don't need to pass them every time we call the collate function
 customized_collate_function = partial(custom_collate_function, 
                                       device=device, 
-                                      allowed_max_length=1024 # gpt2 max length
+                                      allowed_max_length=1024 # gpt2 max length is 1024
                                       )
 NUM_WORKERS = os.cpu_count() if device == "cpu" else 0
 BATCH_SIZE = 8
@@ -167,7 +167,6 @@ test_loader = DataLoader(
     collate_fn=customized_collate_function
 )
 
-
 print("Sanity check")
 for x, y in train_loader:
     assert x.shape[0] == y.shape[0] and x.shape[1] == y.shape[1], f"Train loader: {x.shape} != {y.shape}"
@@ -175,3 +174,77 @@ for x, y in val_loader:
     assert x.shape[0] == y.shape[0] and x.shape[1] == y.shape[1], f"Val loader: {x.shape} != {y.shape}"
 for x, y in test_loader:
     assert x.shape[0] == y.shape[0] and x.shape[1] == y.shape[1], f"Test loader: {x.shape} != {y.shape}"
+print("All checks passed")
+
+# Let's load gpt2-small
+from gpt2 import BASE_CONFIG, load_weights, model_configs, model_names
+from smol_gpt import SmolGPTModel
+from transformers import GPT2Model
+from training import generate, token_ids_to_text, text_to_token_ids
+
+CHOOSE_MODEL = "gpt2-small (124M)"
+BASE_CONFIG.update(model_configs[CHOOSE_MODEL])
+
+gpt2_huggingface = GPT2Model.from_pretrained(model_names[CHOOSE_MODEL], cache_dir="to_ignore/checkpoints")
+gpt2_huggingface.eval()
+print(gpt2_huggingface)
+
+gpt2 = SmolGPTModel(BASE_CONFIG)
+load_weights(gpt2, gpt2_huggingface)
+gpt2.eval()
+
+# Baseline without fine-tuning
+torch.manual_seed(123)
+input_text = format_input(val_data[0])
+print(f"Input text: {input_text}")
+print()
+token_ids = generate(gpt2, 
+                     text_to_token_ids(input_text, tokenizer), 
+                     max_new_tokens=35, 
+                     context_size=BASE_CONFIG["context_length"], 
+                     eos_id=50256)
+# generate repeats the input, let's remove it
+print(f"Response: {token_ids_to_text(token_ids, tokenizer)[len(input_text):].strip()}")
+
+# Now let's fine-tune
+# We can use the functions used for the training 🤗
+from training import calc_loss_loader, training_loop_simple
+
+# Let's calculate the initial loss
+gpt2.to(device)
+torch.manual_seed(123)
+with torch.no_grad():
+    initial_train_loss = calc_loss_loader(train_loader, gpt2, device, num_batches=5)
+    initial_val_loss = calc_loss_loader(val_loader, gpt2, device, num_batches=5)
+
+print(f"Initial train loss: {initial_train_loss}")
+print(f"Initial val loss: {initial_val_loss}")
+
+# Training
+import time
+start_time = time.time()
+torch.manual_seed(123)
+optimizer = torch.optim.Adam(gpt2.parameters(), lr=5e-5, weight_decay=0.1)
+NUM_EPOCHS = 2
+
+# Unfortunately gpt2-small is very bad but I have only 4 GB of VRAM locally
+train_losses, val_losses, tokens_seen = training_loop_simple(
+    gpt2, 
+    train_loader, 
+    val_loader, 
+    optimizer, 
+    device, 
+    num_epochs=NUM_EPOCHS, 
+    eval_freq=5, 
+    eval_iter=5, 
+    start_context=format_input(val_data[0]),
+    tokenizer=tokenizer)
+
+end_time = time.time()
+execution_time_minutes = (end_time - start_time) / 60
+print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+
+from training import plot_losses
+
+epochs_tensor = torch.linspace(0, NUM_EPOCHS, len(train_losses))
+plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
