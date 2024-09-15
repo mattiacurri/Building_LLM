@@ -308,3 +308,46 @@ for i, entry in tqdm(enumerate(test_data), total=len(test_data)):
 # Save the test set with the model responses
 with open("to_ignore/test_data_with_model_responses.json", "w") as file:
     json.dump(test_data, file, indent=4) # indent for pretty printing
+    
+# Now we check if ollama is running, we will use it to run an LLM to evaluate the responses
+import psutil
+
+def check_ollama(process_name):
+    running = False
+    for proc in psutil.process_iter(["name"]):
+        if process_name in proc.info["name"]:
+            running = True
+            break
+    return running
+
+ollama_running = check_ollama("ollama")
+
+if not ollama_running:
+    raise RuntimeError("Ollama is not running. Please start it before running the evaluation.")
+
+print(f"Ollama running: {check_ollama("ollama")}")
+
+# In alternative we can communicate with the ollama server using the requests library
+import requests
+
+def query_model(prompt, model="llama3", url="http://localhost:11434/api/chat"):
+    data = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "options": {
+            "seed": 123,
+            "temperature": 0,
+            "num_ctx": 2048
+        },
+        "stream": False
+    }
+    
+    # Send the POST request
+    response = requests.post(url, json=data)
+
+    response_json = response.json()
+    return response_json["message"]["content"]
+    
+print(query_model(prompt="What do Llamas eat?", model="qwen2:1.5b"))
