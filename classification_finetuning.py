@@ -240,13 +240,13 @@ def calc_accuracy_loader(dataloader, model, device, num_batches=None):
             break
     return correct_predictions / num_examples
 
-torch.manual_seed(123)
+# torch.manual_seed(123)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
-print(f'Training accuracy before fine-tuning: {calc_accuracy_loader(train_loader, model, device, num_batches=10)}%')
-print(f'Validation accuracy before fine-tuning: {calc_accuracy_loader(val_loader, model, device, num_batches=10)}%')
-print(f'Test accuracy before fine-tuning: {calc_accuracy_loader(test_loader, model, device, num_batches=10)}%')
+# print(f'Training accuracy before fine-tuning: {calc_accuracy_loader(train_loader, model, device, num_batches=10)}%')
+# print(f'Validation accuracy before fine-tuning: {calc_accuracy_loader(val_loader, model, device, num_batches=10)}%')
+# print(f'Test accuracy before fine-tuning: {calc_accuracy_loader(test_loader, model, device, num_batches=10)}%')
 
 # Since accuracy is not differentiable, let's use the cross-entropy as a loss function
 def calc_loss_batch(input_batch, target_batch, model, device):
@@ -272,14 +272,14 @@ def calc_loss_loader(dataloader, model, device, num_batches=None):
     return total_loss / num_batches
 
 # Let's compute the initial loss before fine-tuning
-with torch.no_grad():
-    train_loss = calc_loss_loader(train_loader, model, device, num_batches=10)
-    val_loss = calc_loss_loader(val_loader, model, device, num_batches=10)
-    test_loss = calc_loss_loader(test_loader, model, device, num_batches=10)
+# with torch.no_grad():
+#     train_loss = calc_loss_loader(train_loader, model, device, num_batches=10)
+#     val_loss = calc_loss_loader(val_loader, model, device, num_batches=10)
+#     test_loss = calc_loss_loader(test_loader, model, device, num_batches=10)
 
-print(f'Training loss before fine-tuning: {train_loss:.3f}')
-print(f'Validation loss before fine-tuning: {val_loss:.3f}')
-print(f'Test loss before fine-tuning: {test_loss:.3f}')
+# print(f'Training loss before fine-tuning: {train_loss:.3f}')
+# print(f'Validation loss before fine-tuning: {val_loss:.3f}')
+# print(f'Test loss before fine-tuning: {test_loss:.3f}')
 
 # Stage 3: Model fine-tuning and usage
 # 8) Fine-tune model
@@ -404,23 +404,23 @@ def train_classifier_simple(model, train_loader, val_loader, optimizer, device, 
 
     return train_losses, val_losses, train_accs, val_accs, examples_seen
 
-import time
+# import time
 
-start_time = time.time()
+# start_time = time.time()
 
-torch.manual_seed(123)
+# torch.manual_seed(123)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
+# optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
 
-num_epochs = 5
-train_losses, val_losses, train_accs, val_accs, examples_seen = train_classifier_simple(
-    model, train_loader, val_loader, optimizer, device,
-    num_epochs=num_epochs, eval_freq=50, eval_iter=5,
-)
+# num_epochs = 5
+# train_losses, val_losses, train_accs, val_accs, examples_seen = train_classifier_simple(
+#     model, train_loader, val_loader, optimizer, device,
+#     num_epochs=num_epochs, eval_freq=50, eval_iter=5,
+# )
 
-end_time = time.time()
-execution_time_minutes = (end_time - start_time) / 60
-print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+# end_time = time.time()
+# execution_time_minutes = (end_time - start_time) / 60
+# print(f"Training completed in {execution_time_minutes:.2f} minutes.")
 
 import matplotlib.pyplot as plt
 
@@ -443,15 +443,15 @@ def plot_values(epochs_seen, examples_seen, train_values, val_values, label="Los
     # plt.savefig(f"{label}-plot.pdf")
     plt.show()
 
-epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
-examples_seen_tensor = torch.linspace(0, examples_seen, len(train_losses))
+# epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+# examples_seen_tensor = torch.linspace(0, examples_seen, len(train_losses))
 
-plot_values(epochs_tensor, examples_seen_tensor, train_losses, val_losses)
+# plot_values(epochs_tensor, examples_seen_tensor, train_losses, val_losses)
 
-# 9) Evaluate fine-tuned model
-print(f'Training accuracy after fine-tuning: {calc_accuracy_loader(train_loader, model, device)*100:.3f}%')
-print(f'Validation accuracy after fine-tuning: {calc_accuracy_loader(val_loader, model, device)*100:.3f}%')
-print(f'Test accuracy after fine-tuning: {calc_accuracy_loader(test_loader, model, device)*100:.3f}%')
+# # 9) Evaluate fine-tuned model
+# print(f'Training accuracy after fine-tuning: {calc_accuracy_loader(train_loader, model, device)*100:.3f}%')
+# print(f'Validation accuracy after fine-tuning: {calc_accuracy_loader(val_loader, model, device)*100:.3f}%')
+# print(f'Test accuracy after fine-tuning: {calc_accuracy_loader(test_loader, model, device)*100:.3f}%')
 
 # 10) Use model on new data
 def classify_sms(text, model, tokenizer, device, max_length=None, pad_token_id=50256):
@@ -476,26 +476,104 @@ def classify_sms(text, model, tokenizer, device, max_length=None, pad_token_id=5
     
     return "spam" if prediction == 1 else "not spam"
 
-text_1 = (
-    "You are a winner you have been specially"
-    " selected to receive $1000 cash or a $2000 award."
-)
+# text_1 = (
+#     "You are a winner you have been specially"
+#     " selected to receive $1000 cash or a $2000 award."
+# )
 
-print(classify_sms(
-    text_1, model, tokenizer, device, max_length=train_dataset.max_length
-))
+# print(classify_sms(
+#     text_1, model, tokenizer, device, max_length=train_dataset.max_length
+# ))
 
 text_2 = (
     "Hey, just wanted to check if we're still on"
     " for dinner tonight? Let me know!"
 )
 
-print(classify_sms(
-    text_2, model, tokenizer, device, max_length=train_dataset.max_length
-))
-
-torch.save(model.state_dict(), "to_ignore/spam_classifier.pth")
+# Save the fine-tuned model
+# torch.save(model.state_dict(), "to_ignore/spam_classifier.pth")
 
 # To load:
-# model_state_dict = torch.load("review_classifier.pth", map_location=device, weights_only=True)
+# model_state_dict = torch.load("to_ignore/spam_classifier.pth", map_location=device, weights_only=True)
 # model.load_state_dict(model_state_dict)
+
+# token_ids = classify_sms
+
+# print(classify_sms(
+#     text_2, model, tokenizer, device, max_length=train_dataset.max_length
+# ))
+
+# LoRa fine-tuning
+# Let's create the layer that incorporates LoRa and linear layers
+
+class LoRa(nn.Module):
+    def __init__(self, rank, alpha, in_dim, out_dim):
+        super().__init__()
+        self.A = torch.nn.Parameter(torch.empty(in_dim, rank))
+        torch.nn.init.kaiming_uniform_(self.A, a=math.sqrt(5)) # The same initialization used for Linear layers in Pytorch
+        self.B = torch.nn.Parameter(torch.zeros(rank, out_dim)) # B is zeroed so it doesn't affect the original weights 
+        self.alpha = alpha       
+            
+    def forward(self, x):
+        return self.alpha * (x @ self.A @ self.B)
+    
+class LinearWithLoRa(nn.Module):
+    def __init__(self, linear, rank, alpha):
+        super().__init__()
+        self.linear = linear
+        self.lora = LoRa(rank, alpha, linear.in_features, linear.out_features)
+            
+    def forward(self, x):
+        return self.linear(x) + self.lora(x)
+    
+def replace_linear_with_lora(model, rank, alpha):
+    for name, module in model.named_children():
+        # Replace the linear layer with a LinearWithLoRa layer
+        if isinstance(module, torch.nn.Linear):
+            setattr(model, name, LinearWithLoRa(module, rank, alpha))
+        else:
+            # Recursively apply the function to the child module
+            replace_linear_with_lora(module, rank, alpha)
+
+# Let's freeze the model
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Total trainable parameters before freezing: {total_params:,}")
+
+for paral in model.parameters():
+    paral.requires_grad = False
+
+total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"Total trainable parameters after freezing: {total_params:,}")
+
+# Let's replace the last layer with a LinearWithLoRa layer
+# Alpha is usually half, double or equal to the rank
+replace_linear_with_lora(model, rank=16, alpha=16)
+
+total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"Total trainable parameters after substitution: {total_params:,}")
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+import time
+
+start_time = time.time()
+
+torch.manual_seed(123)
+
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
+
+num_epochs = 5
+train_losses, val_losses, train_accs, val_accs, examples_seen = train_classifier_simple(
+    model, train_loader, val_loader, optimizer, device,
+    num_epochs=num_epochs, eval_freq=50, eval_iter=5,
+)
+
+end_time = time.time()
+execution_time_minutes = (end_time - start_time) / 60
+print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+
+epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+examples_seen_tensor = torch.linspace(0, examples_seen, len(train_losses))
+
+plot_values(epochs_tensor, examples_seen_tensor, train_losses, val_losses)
