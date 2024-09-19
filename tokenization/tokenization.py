@@ -3,7 +3,7 @@ with open('the_verdict.txt', 'r') as file:
     raw_text = file.read()
 print(f'Number of characters: {len(raw_text)}')
 
-# steps: raw_text -> tokenization -> vocab -> token ids -> embedding
+# TOKENIZATION STEPS: raw_text -> tokenization -> vocab -> token ids -> embedding
 
 # tokenizing with a simple regex
 import re
@@ -19,22 +19,7 @@ print(f'Vocab size: {vocab_size}')
 vocab = {token: i for i, token in enumerate(all_tokens)}
 
 # now we can define a simple tokenizer class
-class SimpleTokenizer:
-    def __init__(self, vocab):
-        self.str_to_int = vocab
-        self.int_to_str = {i: token for token, i in vocab.items()}
-    
-    def encode(self, text):
-        preprocessed = re.split(r'([,.?_!"()\']|--|\s)', text)
-        preprocessed = [item.strip() for item in preprocessed if item.strip() != '']
-        preprocessed = [token if token in self.str_to_int else '<|unk|>' for token in preprocessed]
-        ids = [self.str_to_int[token] for token in preprocessed]
-        return ids
-    
-    def decode(self, ids):
-        text = ' '.join([self.int_to_str[id] for id in ids])
-        text = re.sub(r'\s+([,.?_!"()\'])', r'\1', text) # add spaces around punctuation
-        return text
+from SimpleTokenizer import SimpleTokenizer
 
 tokenizer = SimpleTokenizer(vocab)
 text1 = "The fox jumps over the lazy dog"
@@ -45,10 +30,10 @@ ids = tokenizer.encode(text3)
 print(ids)
 print(tokenizer.decode(ids))
 
-# now we will use byte pair encoding (BPE), which is a type of tokenization that is used by openAI's models
+# now we will use byte pair encoding (BPE), which is a kind of tokenization that is used by openAI's models
 import tiktoken # written by tiktoken, it contains the BPE algorithm
 
-gpt_tokenizer = tiktoken.get_encoding("o200k_base") # the encoding used for gpt-4o according to a sketchy Go documentation of tiktoken i found online
+gpt_tokenizer = tiktoken.get_encoding("o200k_base") # the encoding used for gpt-4o according to a sketchy Go documentation of tiktoken I found online
 
 # print # of vocab
 print(f'Vocab size of gpt-4o: {gpt_tokenizer.n_vocab}')
