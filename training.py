@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from smolgpt.SmolGPT import SmolGPTModel, generate_text_simple
 import tiktoken
-from dataset import create_dataloader
+from dataset.SimpleDataset import create_dataloader
 
 SMOLGPT_CONFIG_124M_MCL = {
     "vocab_size": 50257, # Vocabulary size
