@@ -1,9 +1,11 @@
 import torch
 import numpy as np
-from training import generate, text_to_token_ids, tokenizer, token_ids_to_text
+from training import generate, text_to_token_ids, token_ids_to_text
 import tiktoken
 from transformers import GPT2Model
-from smol_gpt import SmolGPTModel
+from smolgpt.SmolGPT import SmolGPTModel
+
+tokenizer = tiktoken.get_encoding("gpt2")
 
 model_names = {
     "gpt2-small (124M)": "openai-community/gpt2",

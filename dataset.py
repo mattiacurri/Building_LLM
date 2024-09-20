@@ -1,4 +1,4 @@
-from tokenization import gpt_tokenizer as gpt4o_tokenizer
+# from tokenization import gpt_tokenizer as tokenizer
 import torch
 from torch.utils.data import Dataset, DataLoader
 import os
@@ -34,9 +34,12 @@ with open("the_verdict.txt", "r", encoding="utf-8") as f:
     raw_text = f.read()
 
 # stride 4 to fully utilize the data set and avoid overlap and (maybe) overfitting
+import tiktoken
+tokenizer = tiktoken.get_encoding("gpt2")
+
 max_length = 4
 dataloader = create_dataloader(
-    raw_text, gpt4o_tokenizer, batch_size=8, max_length=max_length,
+    raw_text, tokenizer, batch_size=8, max_length=max_length,
     stride=max_length, shuffle=False, num_workers=os.cpu_count()
 )
 data_iter = iter(dataloader)
@@ -50,7 +53,7 @@ torch.manual_seed(42)
 
 # now let's create our token embeddings using absolute positional embeddings
 output_dim = 256
-vocab_size = gpt4o_tokenizer.n_vocab
+vocab_size = tokenizer.n_vocab
 token_embedding_layer = torch.nn.Embedding(vocab_size, output_dim)
 print(f'Shape of Token Embedding Layer: {token_embedding_layer.weight.shape}') # [vocab_size, output_dim]
 

@@ -31,7 +31,7 @@ from torch.utils.data import Dataset, DataLoader
 
 import tiktoken
 
-from smol_gpt import SmolGPTModel
+from smolgpt.SmolGPT import SmolGPTModel
 from gpt2 import gpt2_huggingface, BASE_CONFIG, load_weights, model_configs
 from training import generate, token_ids_to_text, text_to_token_ids
 

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from smol_gpt import SmolGPTModel, generate_text_simple
+from smolgpt.SmolGPT import SmolGPTModel, generate_text_simple
 import tiktoken
 from dataset import create_dataloader
 
@@ -204,7 +204,7 @@ def generate_and_print_sample(model, tokenizer, device, start_context):
     model.train()
     
 def training_loop_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
-                       eval_freq, eval_iter, start_context):
+                       eval_freq, eval_iter, start_context, tokenizer=None):
     train_losses, val_losses, track_token_seen = [], [], []
     tokens_seen, global_step = 0, -1
     
@@ -229,7 +229,7 @@ def training_loop_simple(model, train_loader, val_loader, optimizer, device, num
                 print(f'Epoch: {epoch}, Global Step: {global_step}, Train Loss: {train_loss:.3f}, Val Loss: {val_loss:.3f}')
                 
         # Provides a sense of how the model is doing
-        generate_and_print_sample(model, train_loader.dataset.tokenizer, device, start_context)
+        generate_and_print_sample(model, tokenizer, device, start_context)
     return train_losses, val_losses, track_token_seen
 
 # import time
@@ -244,25 +244,24 @@ def training_loop_simple(model, train_loader, val_loader, optimizer, device, num
 # train_losses, val_losses, tokens_seen = training_loop_simple(
 #     GPT, train_loader, val_loader, optimizer, device,
 #     num_epochs=num_epochs, eval_freq=5, eval_iter=5,
-#     start_context="Every effort moves you",
+#     start_context="Every effort moves you", tokenizer=tokenizer
 # )
 
 # torch.save({"model_state_dict": GPT.state_dict(), 
 #             "optimizer_state_dict": optimizer.state_dict()}, 
-#            "SmolGPT.pth")
+#            "to_ignore/SmolGPT.pth")
 
 # end_time = time.time()
 # execution_time_minutes = (end_time - start_time) / 60
 # print(f"Training completed in {execution_time_minutes:.2f} minutes.")
 
-# # Let's plot the training and validation loss
+# Let's plot the training and validation loss
 # import matplotlib.pyplot as plt
 # from matplotlib.ticker import MaxNLocator
 
 
 # def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
 #     fig, ax1 = plt.subplots(figsize=(5, 3))
-
 #     # Plot training and validation loss against epochs
 #     ax1.plot(epochs_seen, train_losses, label="Training loss")
 #     ax1.plot(epochs_seen, val_losses, linestyle="-.", label="Validation loss")

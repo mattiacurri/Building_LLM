@@ -178,7 +178,7 @@ print("All checks passed")
 
 # Let's load gpt2-small
 from gpt2 import BASE_CONFIG, load_weights, model_configs, model_names
-from smol_gpt import SmolGPTModel
+from smolgpt.SmolGPT import SmolGPTModel
 from transformers import GPT2Model
 from training import generate, token_ids_to_text, text_to_token_ids
 
