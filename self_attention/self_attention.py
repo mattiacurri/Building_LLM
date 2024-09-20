@@ -164,3 +164,34 @@ print(f'Causal Attention Weights: {attn_weights}')
 # Fourth step: compute the context vector
 context_vector = torch.matmul(attn_weights, values) # compute the context vector
 print(f'Causal Attention Context Vectors: {context_vector}')
+
+# Test of SelfAttention classes
+from SelfAttention import SelfAttentionV1, SelfAttentionV2, CausalAttention, MultiHeadAttention
+torch.manual_seed(123)
+inputs = torch.tensor(
+    [[0.43, 0.15, 0.89], # Your (x^1) 
+     [0.55, 0.87, 0.66], # journey (x^2)
+     [0.57, 0.85, 0.64], # starts (x^3)
+     [0.22, 0.58, 0.33], # with (x^4)
+     [0.77, 0.25, 0.10], # one (x^5)
+     [0.05, 0.80, 0.55]] # step (x^6)
+)
+d_in = inputs.shape[1]
+d_out = 2
+sa = SelfAttentionV1(3, 2)
+print(sa(inputs))
+
+sa2 = SelfAttentionV2(3, 2)
+print(sa2(inputs))
+
+batch = torch.stack([inputs, inputs])
+sa3 = CausalAttention(3, 2, 0.1, batch.shape[1])
+print(sa3(inputs))
+
+torch.manual_seed(123)
+
+batch_size, context_length, d_in = batch.shape
+d_out = 2
+mha = MultiHeadAttention(d_in, d_out, context_length, 0.0, num_heads=2)
+context_vecs = mha(batch)
+print(context_vecs)

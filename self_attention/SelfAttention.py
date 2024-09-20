@@ -146,33 +146,3 @@ class MultiHeadAttention(nn.Module):
         context_vec = self.out_proj(context_vec) # optional projection, standard convention in LLM implementation, but it's not strictly necessary (recent research has shown that it can be removed without affecting the modeling performance)
 
         return context_vec
-
-# Test
-torch.manual_seed(123)
-inputs = torch.tensor(
-    [[0.43, 0.15, 0.89], # Your (x^1) 
-     [0.55, 0.87, 0.66], # journey (x^2)
-     [0.57, 0.85, 0.64], # starts (x^3)
-     [0.22, 0.58, 0.33], # with (x^4)
-     [0.77, 0.25, 0.10], # one (x^5)
-     [0.05, 0.80, 0.55]] # step (x^6)
-)
-d_in = inputs.shape[1]
-d_out = 2
-sa = SelfAttentionV1(3, 2)
-print(sa(inputs))
-
-sa2 = SelfAttentionV2(3, 2)
-print(sa2(inputs))
-
-batch = torch.stack([inputs, inputs])
-sa3 = CausalAttention(3, 2, 0.1, batch.shape[1])
-print(sa3(inputs))
-
-torch.manual_seed(123)
-
-batch_size, context_length, d_in = batch.shape
-d_out = 2
-mha = MultiHeadAttention(d_in, d_out, context_length, 0.0, num_heads=2)
-context_vecs = mha(batch)
-print(context_vecs)
