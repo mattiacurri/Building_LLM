@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from SelfAttention import MultiHeadAttention
+from self_attention.SelfAttention import MultiHeadAttention
 
 # Configuration of SmolGPT
 SMOLGPT_CONFIG_124M = {
