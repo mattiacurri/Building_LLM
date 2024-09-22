@@ -143,3 +143,51 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
         idx = torch.cat((idx, idx_next), dim=1)  # (batch, n_tokens+1)
 
     return idx
+
+def text_to_token_ids(text, tokenizer):
+    encoded = tokenizer.encode(text, allowed_special={'<|endoftext|>'})
+    encoded_tensor = torch.tensor(encoded).unsqueeze(0) # add batch dimension
+    return encoded_tensor
+
+def token_ids_to_text(token_ids, tokenizer):
+    flat = token_ids.squeeze(0) # remove batch dimension
+    return tokenizer.decode(flat.tolist())
+
+# Now let's use some decoding strategies to generate better text (temperature scaling and top-k sampling)
+def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=None):
+    for _ in range(max_new_tokens):
+        idx_cond = idx[:, -context_size:]
+        with torch.no_grad():
+            logits = model(idx_cond)
+        logits = logits[:, -1, :]
+        # top-k sampling: maintain only the top k highest probabilities
+        if top_k is not None:
+            top_logits, _ = torch.topk(logits, top_k, dim=-1)
+            min_val = top_logits[:, -1]
+            # mask with -inf to exclude the values below the top-k
+            logits = torch.where(logits < min_val, torch.tensor(-float('inf')).to(logits.device), logits)
+        # temperature scaling: increase the temperature to make the distribution more uniform or decrease it to make it more peaky (more confident)
+        if temperature > 0.0:
+            logits /= temperature
+            probs = torch.softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+        else:
+            next_token = torch.argmax(logits, dim=-1, keepdim=True)
+        
+        if next_token == eos_id:  # Stop generating early if end-of-sequence token is encountered and eos_id is specified
+            break
+        idx = torch.cat((idx, next_token), dim=1)
+    return idx
+
+def generate_and_print_sample(model, tokenizer, device, start_context, max_new_tokens=50):
+    model.eval()
+    context_size = model.position_embedding.weight.shape[0]
+    encoded = text_to_token_ids(start_context, tokenizer).to(device)
+    with torch.no_grad():
+        token_ids = generate_text_simple(
+            model=model, idx=encoded,
+            max_new_tokens=max_new_tokens, context_size=context_size
+        )
+    decoded_text = token_ids_to_text(token_ids, tokenizer)
+    print(decoded_text.replace("\n", " "))  # Compact print format
+    model.train()

@@ -1,5 +1,5 @@
 # the dataset is a single file to be able to run all the code in the repo on consumer devices
-with open('the_verdict.txt', 'r') as file:
+with open('dataset/the_verdict.txt', 'r') as file:
     raw_text = file.read()
 print(f'Number of characters: {len(raw_text)}')
 
