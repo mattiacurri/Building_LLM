@@ -175,7 +175,7 @@ execution_time_minutes = (end_time - start_time) / 60
 print(f"Training completed in {execution_time_minutes:.2f} minutes.")
 
 epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
-plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
+plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses, xlabel="Tokens seen", file_name="to_ignore/loss-plot.pdf")
 
 torch.manual_seed(123)
 GPT.eval()

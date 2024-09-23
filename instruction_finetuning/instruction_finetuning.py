@@ -8,6 +8,18 @@ import os
 import urllib.request
 import random
 
+import tiktoken
+from functools import partial
+
+from torch.utils.data import Dataset, DataLoader
+import torch
+
+from training.training_loop import plot_losses
+
+import psutil
+
+from tqdm import tqdm
+
 def download_and_load_file(file_path, url):
     if not os.path.exists(file_path):
         with urllib.request.urlopen(url) as response:
@@ -22,7 +34,6 @@ def download_and_load_file(file_path, url):
         data = json.load(file)
 
     return data
-
 
 file_path = "to_ignore/instruction-data.json"
 url = (
@@ -58,8 +69,6 @@ print(f'"Training set length: {len(train_data)}')
 print(f'Validation set length: {len(val_data)}')
 print(f'Test set length: {len(test_data)}')
 
-from torch.utils.data import Dataset, DataLoader
-import torch
 class InstructionDataset(Dataset):
     def __init__(self, data, tokenizer, max_length=512):
         self.data = data
@@ -75,6 +84,7 @@ class InstructionDataset(Dataset):
     
     def __len__(self):
         return len(self.data)
+
 # Now to prepare batches we need the following steps:
 # First of all instead of pad using the longest sequence in the dataset, we pad according to the max length in the batch
 # Second, we need to add the target to the batch, which is the input shifted by 1 token to the right
@@ -126,12 +136,10 @@ print(inputs, targets)
 
 # Now we can create the dataloaders
 torch.manual_seed(123)
-import tiktoken
+
 tokenizer = tiktoken.get_encoding("gpt2")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-import os
-from functools import partial
 # We use a partial function to pass the device and the maximum length to the collate function, so we don't need to pass them every time we call the collate function
 customized_collate_function = partial(custom_collate_function, 
                                       device=device, 
@@ -177,10 +185,10 @@ for x, y in test_loader:
 print("All checks passed")
 
 # Let's load gpt2-small
-from gpt2 import BASE_CONFIG, load_weights, model_configs, model_names
+from smolgpt.gpt2 import BASE_CONFIG, load_weights, model_configs, model_names
 from smolgpt.SmolGPT import SmolGPTModel
 from transformers import GPT2Model
-from training import generate, token_ids_to_text, text_to_token_ids
+from training.training_loop import generate, token_ids_to_text, text_to_token_ids
 
 CHOOSE_MODEL = "gpt2-small (124M)"
 BASE_CONFIG.update(model_configs[CHOOSE_MODEL])
@@ -208,7 +216,7 @@ print(f"Response: {token_ids_to_text(token_ids, tokenizer)[len(input_text):].str
 
 # Now let's fine-tune
 # We can use the functions used for the training 🤗
-from training import calc_loss_loader, training_loop_simple
+from training.training_loop import calc_loss_loader, training_loop_simple
 
 # Let's calculate the initial loss
 gpt2.to(device)
@@ -228,32 +236,30 @@ optimizer = torch.optim.Adam(gpt2.parameters(), lr=5e-5, weight_decay=0.01)
 NUM_EPOCHS = 3
 
 # Unfortunately gpt2-small is very bad but I have only 4 GB of VRAM locally
-# train_losses, val_losses, tokens_seen = training_loop_simple(
-#     gpt2, 
-#     train_loader, 
-#     val_loader, 
-#     optimizer, 
-#     device, 
-#     num_epochs=NUM_EPOCHS, 
-#     eval_freq=5, 
-#     eval_iter=5, 
-#     start_context=format_input(val_data[0]),
-#     tokenizer=tokenizer)
+train_losses, val_losses, tokens_seen = training_loop_simple(
+    gpt2, 
+    train_loader, 
+    val_loader, 
+    optimizer, 
+    device, 
+    num_epochs=NUM_EPOCHS, 
+    eval_freq=5, 
+    eval_iter=5, 
+    start_context=format_input(val_data[0]),
+    tokenizer=tokenizer)
 
 end_time = time.time()
 execution_time_minutes = (end_time - start_time) / 60
 print(f"Training completed in {execution_time_minutes:.2f} minutes.")
 
 file_name = "to_ignore/gpt2_small_finetuned.pth"
-# torch.save(gpt2.state_dict(), file_name)
-# print(f"Model saved to {file_name}")
+torch.save(gpt2.state_dict(), file_name)
+print(f"Model saved to {file_name}")
 
-# from training import plot_losses
+epochs_tensor = torch.linspace(0, NUM_EPOCHS, len(train_losses))
+plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses, xlabel="Examples seen", file_name="to_ignore/instruction-plot.pdf")
 
-# epochs_tensor = torch.linspace(0, NUM_EPOCHS, len(train_losses))
-# plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
-
-# load the model
+# Load the model
 gpt2.load_state_dict(torch.load(file_name))
 gpt2.eval()
 
@@ -311,8 +317,6 @@ with open("to_ignore/test_data_with_model_responses.json", "w") as file:
     json.dump(test_data, file, indent=4) # indent for pretty printing
     
 # Now we check if ollama is running, we will use it to run an LLM to evaluate the responses
-import psutil
-
 def check_ollama(process_name):
     running = False
     for proc in psutil.process_iter(["name"]):
@@ -368,8 +372,6 @@ def query_model(prompt, model="llama3", url="http://localhost:11434/api/chat"):
 print(query_model(prompt="What do Llamas eat?", model="llama3"))
 
 # Now let's evaluate the responses
-    
-from tqdm import tqdm
 def evaluate_responses(test_data, judge="llama3"):
     scores = []
     for i, entry in tqdm(enumerate(test_data), total=len(test_data)):

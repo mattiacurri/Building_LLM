@@ -1,3 +1,26 @@
+import urllib.request
+import zipfile
+import os
+from pathlib import Path
+
+import pandas as pd
+
+import torch
+from torch.utils.data import Dataset, DataLoader
+
+import tiktoken
+
+# add in sys.path the path of the folder containing the module
+import os
+import sys
+
+if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from smolgpt.SmolGPT import SmolGPTModel, generate, token_ids_to_text, text_to_token_ids
+from smolgpt.gpt2 import GPT2_BASE_CONFIG, load_gpt2
+from training.training_loop import plot_losses
+
 # We will perform a spam-not spam classification for sms messages using the UCI SMS Spam Collection dataset.
 '''
 Classification Finetuning
@@ -17,23 +40,6 @@ Stage 3: Model fine-tuning and usage
 9) Evaluate fine-tuned model
 10) Use model on new data
 '''
-
-# Libraries
-import urllib.request
-import zipfile
-import os
-from pathlib import Path
-
-import pandas as pd
-
-import torch
-from torch.utils.data import Dataset, DataLoader
-
-import tiktoken
-
-from smolgpt.SmolGPT import SmolGPTModel
-from gpt2 import gpt2_huggingface, BASE_CONFIG, load_weights, model_configs
-from training import generate, token_ids_to_text, text_to_token_ids
 
 # Stage 1: Dataset Preparation
 # 1) Download the dataset
@@ -169,23 +175,19 @@ print(f'{len(test_loader)} batches in test loader')
 
 # Stage 2: Model Setup
 # 4) Initialize model
-CHOOSE_MODEL = "gpt2-small (124M)"
-BASE_CONFIG.update(model_configs[CHOOSE_MODEL])
-model = SmolGPTModel(BASE_CONFIG)
-
-# 5) Load pretrained weights
-load_weights(model, gpt2_huggingface)
-model.eval()
+GPT2_SMALL = "gpt2-small (124M)"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = load_gpt2(GPT2_SMALL, device)
 
 # Test to ensure the weights are loaded correctly
-# text_1 = "Every effort moves you"
-# token_ids = generate(
-#     model=model,
-#     idx=text_to_token_ids(text_1, tokenizer),
-#     max_new_tokens=15,
-#     context_size=BASE_CONFIG["context_length"],
-# )
-# print(token_ids_to_text(token_ids, tokenizer))
+text_1 = "Every effort moves you"
+token_ids = generate(
+    model=model,
+    idx=text_to_token_ids(text_1, tokenizer).to(device),
+    max_new_tokens=15,
+    context_size=GPT2_BASE_CONFIG["context_length"],
+)
+print(token_ids_to_text(token_ids, tokenizer))
 
 # 6) Modify model for fine-tuning
 # We substitute the last layer of the model with a linear layer with 2 output units for binary classification.
@@ -198,7 +200,7 @@ NUM_CLASSES = 2
 
 # Then we replace the last layer
 # By default requires_grad is set to True 'cause we're replacing the layer
-model.out_head = torch.nn.Linear(in_features=BASE_CONFIG["embed_dim"], 
+model.out_head = torch.nn.Linear(in_features=GPT2_BASE_CONFIG["embed_dim"], 
                                  out_features=NUM_CLASSES)
 
 # It's sufficient, but to yield better results, we can fine-tune the last layer, the last layer norm and the last transformer layer
@@ -214,7 +216,9 @@ text = "May the force be with"
 enc = tokenizer.encode(text)
 enc = torch.tensor(enc).unsqueeze(0)
 with torch.no_grad():
+    model.to("cpu")
     out = model(enc)
+    model.to(device)
 print(f'Output: {out}; Shape: {out.shape}') # previously instead of 5 we would have 50256 as second dimension
 
 # To fine-tune we are interested only on the last output token
@@ -240,13 +244,12 @@ def calc_accuracy_loader(dataloader, model, device, num_batches=None):
             break
     return correct_predictions / num_examples
 
-# torch.manual_seed(123)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+torch.manual_seed(123)
 model.to(device)
 
-# print(f'Training accuracy before fine-tuning: {calc_accuracy_loader(train_loader, model, device, num_batches=10)}%')
-# print(f'Validation accuracy before fine-tuning: {calc_accuracy_loader(val_loader, model, device, num_batches=10)}%')
-# print(f'Test accuracy before fine-tuning: {calc_accuracy_loader(test_loader, model, device, num_batches=10)}%')
+print(f'Training accuracy before fine-tuning: {calc_accuracy_loader(train_loader, model, device, num_batches=10)}%')
+print(f'Validation accuracy before fine-tuning: {calc_accuracy_loader(val_loader, model, device, num_batches=10)}%')
+print(f'Test accuracy before fine-tuning: {calc_accuracy_loader(test_loader, model, device, num_batches=10)}%')
 
 # Since accuracy is not differentiable, let's use the cross-entropy as a loss function
 def calc_loss_batch(input_batch, target_batch, model, device):
@@ -272,14 +275,14 @@ def calc_loss_loader(dataloader, model, device, num_batches=None):
     return total_loss / num_batches
 
 # Let's compute the initial loss before fine-tuning
-# with torch.no_grad():
-#     train_loss = calc_loss_loader(train_loader, model, device, num_batches=10)
-#     val_loss = calc_loss_loader(val_loader, model, device, num_batches=10)
-#     test_loss = calc_loss_loader(test_loader, model, device, num_batches=10)
+with torch.no_grad():
+    train_loss = calc_loss_loader(train_loader, model, device, num_batches=10)
+    val_loss = calc_loss_loader(val_loader, model, device, num_batches=10)
+    test_loss = calc_loss_loader(test_loader, model, device, num_batches=10)
 
-# print(f'Training loss before fine-tuning: {train_loss:.3f}')
-# print(f'Validation loss before fine-tuning: {val_loss:.3f}')
-# print(f'Test loss before fine-tuning: {test_loss:.3f}')
+print(f'Training loss before fine-tuning: {train_loss:.3f}')
+print(f'Validation loss before fine-tuning: {val_loss:.3f}')
+print(f'Test loss before fine-tuning: {test_loss:.3f}')
 
 # Stage 3: Model fine-tuning and usage
 # 8) Fine-tune model
@@ -352,19 +355,19 @@ def better_training_loop(model, train_loader, val_loader, optimizer, device, eva
         
     return train_losses, val_losses, train_accs, val_accs, examples_seen
 
-# import time
-# start_time = time.time()
-# torch.manual_seed(123)
-# optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
-# NUM_EPOCHS = 5
+import time
+start_time = time.time()
+torch.manual_seed(123)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
+NUM_EPOCHS = 5
 
-# train_losses, val_losses, train_accs, val_accs, examples_seen = better_training_loop(
-#     model, train_loader, val_loader, optimizer, device, eval_freq=50, eval_iter=5, num_epochs=NUM_EPOCHS
-# )
+train_losses, val_losses, train_accs, val_accs, examples_seen = better_training_loop(
+    model, train_loader, val_loader, optimizer, device, eval_freq=50, eval_iter=5, num_epochs=NUM_EPOCHS
+)
 
-# end_time = time.time()
-# execution_time_minutes = (end_time - start_time) / 60
-# print(f"Training complete in {execution_time_minutes:.2f} minutes")
+end_time = time.time()
+execution_time_minutes = (end_time - start_time) / 60
+print(f"Training complete in {execution_time_minutes:.2f} minutes")
 
 # Overall the same as `train_model_simple` in chapter 5
 def train_classifier_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
@@ -404,54 +407,33 @@ def train_classifier_simple(model, train_loader, val_loader, optimizer, device, 
 
     return train_losses, val_losses, train_accs, val_accs, examples_seen
 
-# import time
+import time
 
-# start_time = time.time()
+start_time = time.time()
 
-# torch.manual_seed(123)
+torch.manual_seed(123)
 
-# optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
 
-# num_epochs = 5
-# train_losses, val_losses, train_accs, val_accs, examples_seen = train_classifier_simple(
-#     model, train_loader, val_loader, optimizer, device,
-#     num_epochs=num_epochs, eval_freq=50, eval_iter=5,
-# )
+num_epochs = 5
+train_losses, val_losses, train_accs, val_accs, examples_seen = train_classifier_simple(
+    model, train_loader, val_loader, optimizer, device,
+    num_epochs=num_epochs, eval_freq=50, eval_iter=5,
+)
 
-# end_time = time.time()
-# execution_time_minutes = (end_time - start_time) / 60
-# print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+end_time = time.time()
+execution_time_minutes = (end_time - start_time) / 60
+print(f"Training completed in {execution_time_minutes:.2f} minutes.")
 
-import matplotlib.pyplot as plt
+epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+examples_seen_tensor = torch.linspace(0, examples_seen, len(train_losses))
 
-def plot_values(epochs_seen, examples_seen, train_values, val_values, label="Loss"):
-    fig, ax1 = plt.subplots(figsize=(5, 3))
-
-    # Plot training and validation loss against epochs
-    ax1.plot(epochs_seen, train_values, label=f"Training {label}")
-    ax1.plot(epochs_seen, val_values, linestyle="-.", label=f"Validation {label}")
-    ax1.set_xlabel("Epochs")
-    ax1.set_ylabel(label.capitalize())
-    ax1.legend()
-
-    # Create a second x-axis for examples seen
-    ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
-    ax2.plot(examples_seen, train_values, alpha=0)  # Invisible plot for aligning ticks
-    ax2.set_xlabel("Examples seen")
-
-    fig.tight_layout()  # Adjust layout to make room
-    # plt.savefig(f"{label}-plot.pdf")
-    plt.show()
-
-# epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
-# examples_seen_tensor = torch.linspace(0, examples_seen, len(train_losses))
-
-# plot_values(epochs_tensor, examples_seen_tensor, train_losses, val_losses)
+plot_losses(epochs_tensor, examples_seen_tensor, train_losses, val_losses, xlabel="Examples seen", file_name="to_ignore/classification-plot.pdf")
 
 # # 9) Evaluate fine-tuned model
-# print(f'Training accuracy after fine-tuning: {calc_accuracy_loader(train_loader, model, device)*100:.3f}%')
-# print(f'Validation accuracy after fine-tuning: {calc_accuracy_loader(val_loader, model, device)*100:.3f}%')
-# print(f'Test accuracy after fine-tuning: {calc_accuracy_loader(test_loader, model, device)*100:.3f}%')
+print(f'Training accuracy after fine-tuning: {calc_accuracy_loader(train_loader, model, device)*100:.3f}%')
+print(f'Validation accuracy after fine-tuning: {calc_accuracy_loader(val_loader, model, device)*100:.3f}%')
+print(f'Test accuracy after fine-tuning: {calc_accuracy_loader(test_loader, model, device)*100:.3f}%')
 
 # 10) Use model on new data
 def classify_sms(text, model, tokenizer, device, max_length=None, pad_token_id=50256):
@@ -476,14 +458,14 @@ def classify_sms(text, model, tokenizer, device, max_length=None, pad_token_id=5
     
     return "spam" if prediction == 1 else "not spam"
 
-# text_1 = (
-#     "You are a winner you have been specially"
-#     " selected to receive $1000 cash or a $2000 award."
-# )
+text_1 = (
+    "You are a winner you have been specially"
+    " selected to receive $1000 cash or a $2000 award."
+)
 
-# print(classify_sms(
-#     text_1, model, tokenizer, device, max_length=train_dataset.max_length
-# ))
+print(classify_sms(
+    text_1, model, tokenizer, device, max_length=train_dataset.max_length
+))
 
 text_2 = (
     "Hey, just wanted to check if we're still on"
@@ -552,7 +534,6 @@ replace_linear_with_lora(model, rank=16, alpha=16)
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total trainable parameters after substitution: {total_params:,}")
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
 import time
@@ -576,4 +557,4 @@ print(f"Training completed in {execution_time_minutes:.2f} minutes.")
 epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
 examples_seen_tensor = torch.linspace(0, examples_seen, len(train_losses))
 
-plot_values(epochs_tensor, examples_seen_tensor, train_losses, val_losses)
+plot_losses(epochs_tensor, examples_seen_tensor, train_losses, val_losses, xlabel="Examples seen", file_name="to_ignore/classification-plot.pdf")

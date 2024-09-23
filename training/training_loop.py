@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
-import tiktoken
 import math
-import time
 import os
 import sys
 
@@ -78,7 +76,7 @@ def training_loop_simple(model, train_loader, val_loader, optimizer, device, num
     return train_losses, val_losses, track_token_seen
 
 # Let's plot the training and validation loss
-def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses, label="Loss"):
+def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses, xlabel, file_name, label="Loss"):
     fig, ax1 = plt.subplots(figsize=(5, 3))
     # Plot training and validation loss against epochs
     ax1.plot(epochs_seen, train_losses, label=f"Training {label}")
@@ -91,10 +89,10 @@ def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses, label="Loss"
     # Create a second x-axis for tokens seen
     ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
     ax2.plot(tokens_seen, train_losses, alpha=0)  # Invisible plot for aligning ticks
-    ax2.set_xlabel("Tokens seen")
+    ax2.set_xlabel(xlabel)
 
     fig.tight_layout()  # Adjust layout to make room
-    plt.savefig("to_ignore/loss-plot.pdf")
+    plt.savefig(file_name)
     plt.show()
 
 # Now a better training loop
