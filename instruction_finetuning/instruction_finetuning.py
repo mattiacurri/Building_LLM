@@ -14,6 +14,9 @@ from functools import partial
 from torch.utils.data import Dataset, DataLoader
 import torch
 
+if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from training.training_loop import plot_losses
 
 import psutil
