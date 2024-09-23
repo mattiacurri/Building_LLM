@@ -14,5 +14,5 @@ class SimpleTokenizer:
     
     def decode(self, ids):
         text = ' '.join([self.int_to_str[id] for id in ids])
-        text = re.sub(r'\s+([,.?_!"()\'])', r'\1', text) # add spaces around punctuation
+        text = re.sub(r'\s+([,.?_!"()\'])', r'\1', text) # removes spaces around punctuation
         return text
