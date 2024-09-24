@@ -95,13 +95,16 @@ def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses, xlabel, file
     plt.savefig(file_name)
     plt.show()
 
-# Now a better training loop
+# Now a better training loop with optional best model saving mechanism
 def better_training_loop(model, train_loader, val_loader, optimizer, device, eval_freq, eval_iter, start_context, num_epochs, warmup_steps=20, initial_lr=3e-5, min_lr=1e-6):
     train_losses, val_losses, track_token_seen, track_lrs = [], [], [], []
     tokens_seen, global_step = 0, -1
     peak_lr = optimizer.param_groups[0]["lr"] # get the initial learning rate
     lr_increment = (peak_lr - initial_lr) / warmup_steps
     total_training_steps = len(train_loader) * num_epochs
+    
+    best_val_loss = float('inf')  # Initialize with infinity
+    best_model_state = None
     
     for epoch in range(num_epochs):
         model.train()
@@ -134,13 +137,19 @@ def better_training_loop(model, train_loader, val_loader, optimizer, device, eva
             optimizer.step()
             tokens_seen += input_batch.numel()
             
-            # Optional evaluation of the model
+            # Optional evaluation and saving of the model
             if global_step % eval_freq == 0:
                 train_loss, val_loss = evaluate_model(model, train_loader, val_loader, device, eval_freq)
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
                 track_token_seen.append(tokens_seen)
                 print(f'Epoch: {epoch}, Global Step: {global_step}, Train Loss: {train_loss:.3f}, Val Loss: {val_loss:.3f}')
+                
+                # Save the best model based on validation loss
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    best_model_state = model.state_dict()
+                    torch.save(best_model_state, 'best_model.pth')
         generate_and_print_sample(model, train_loader.dataset.tokenizer, device, start_context)
         
     return train_losses, val_losses, track_token_seen, track_lrs
