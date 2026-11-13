@@ -42,6 +42,7 @@ class BPE:
             while j < len(corpus)-1:
                 if corpus[j] == tokens[-1][0] and corpus[j+1] == tokens[-1][1]:
                     corpus[j] = str(corpus[j])+str(corpus[j+1])
+                    # $O(M \cdot N^2)$, with another list $O(M \cdot N)$
                     corpus.pop(j+1)
                 j += 1
             i += 1
